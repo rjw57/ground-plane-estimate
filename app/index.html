@@ -11,6 +11,31 @@
     <div id="board"></div>
 
 <!-- HACK: place GLSL code here for extraction. -->
+<script type="x-shader/vertex" id="imageVertexShader">
+varying vec2 textureCoord;
+void main() {
+    textureCoord = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+</script>
+<script type="x-shader/fragment" id="imageFragmentShader">
+varying vec2 textureCoord;
+
+uniform vec2 textureSize;
+uniform sampler2D image;
+
+// Barrel/pincushion distortion coefficient.
+// See https://en.wikipedia.org/wiki/Distortion_(optics)
+uniform float barrelPercent;
+
+void main() {
+    vec2 scaledTexCoord = (textureCoord - vec2(0.5, 0.5)) * textureSize;
+    float r2 = dot(scaledTexCoord, scaledTexCoord);
+    vec2 srcScaledTexCoord = scaledTexCoord * (1.0 + 1e-2 * barrelPercent * r2);
+    gl_FragColor = texture2D(image, (srcScaledTexCoord / textureSize) + vec2(0.5, 0.5));
+}
+</script>
+
 <script type="x-shader/vertex" id="floorVertexShader">
 varying vec3 imageCoordHomog;
 void main() {

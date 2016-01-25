@@ -7,7 +7,7 @@ function main() {
 
     var board = JXG.JSXGraph.initBoard('board', {
         boundingbox: [-100, 1180, 2020, -100],
-        axis: true,
+        axis: false, grid: false,
         keepAspectRatio: true,
         zoom: { wheel: true, },
         showCopyright: false,
@@ -21,6 +21,7 @@ function main() {
     var gui = new dat.GUI();
     gui.add(floorRenderer, 'floorOpacity', 0.0, 1.0);
     gui.add(floorRenderer, 'floorRadius', 5, 30);
+    gui.add(floorRenderer, 'barrelPercent', -40, 40);
 
     function render() {
         window.requestAnimationFrame(render);
@@ -108,6 +109,10 @@ function FloorRenderer(containerElement, textureUrl) {
     this.floorMatrix = new THREE.Matrix3();
     this.floorOpacity = 0.25;
     this.floorRadius = 15;
+    this.barrelPercent = 0.0;
+
+    this.floorMaterial = null;
+    this.imageMaterial = null;
 
     this.camera.position.z = 1;
     this.containerElement.appendChild(this.renderer.domElement);
@@ -121,11 +126,17 @@ function FloorRenderer(containerElement, textureUrl) {
     onResize();
 
     this.render = function() {
+        var uniforms;
+
         if(self.floorMaterial) {
-            var uniforms = self.floorMaterial.uniforms;
+            uniforms = self.floorMaterial.uniforms;
             uniforms.floorMatrix.value = self.floorMatrix;
             uniforms.floorOpacity.value = self.floorOpacity;
             uniforms.floorRadius.value = self.floorRadius;
+        }
+        if(self.imageMaterial) {
+            uniforms = self.imageMaterial.uniforms;
+            uniforms.barrelPercent.value = self.barrelPercent;
         }
         self.renderer.render(self.scene, self.camera);
     }
@@ -142,11 +153,17 @@ function FloorRenderer(containerElement, textureUrl) {
         var w = texture.image.width, h = texture.image.height;
         var geometry = new THREE.PlaneGeometry(w, h, 1, 1);
 
-        var imageMaterial = new THREE.MeshBasicMaterial({
-            map: texture,
+        self.imageMaterial = new THREE.ShaderMaterial({
+            vertexShader: document.getElementById('imageVertexShader').textContent,
+            fragmentShader: document.getElementById('imageFragmentShader').textContent,
+            uniforms: {
+                image: { type: 't', value: texture },
+                textureSize: { type: 'v2', value: new THREE.Vector2(w/h, 1.0) },
+                barrelPercent: { type: 'f', value: self.barrelPercent },
+            },
         });
 
-        var img = new THREE.Mesh(geometry, imageMaterial);
+        var img = new THREE.Mesh(geometry, self.imageMaterial);
         img.position.x = w * 0.5;
         img.position.y = h * 0.5;
         self.scene.add(img);
