@@ -10,6 +10,7 @@ function main() {
         axis: false, grid: false,
         keepAspectRatio: true,
         zoom: { wheel: true, },
+        pan: { needShift: false },
         showCopyright: false,
     });
 
