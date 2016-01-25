@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link rel="stylesheet" href="http://jsxgraph.uni-bayreuth.de/distrib/jsxgraph.css" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <div id="floor"></div>
+    <div id="board"></div>
+
+<!-- HACK: place GLSL code here for extraction. -->
+<script type="x-shader/vertex" id="imageVertexShader">
+varying vec2 textureCoord;
+void main() {
+    textureCoord = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+</script>
+<script type="x-shader/fragment" id="imageFragmentShader">
+varying vec2 textureCoord;
+
+uniform vec2 textureSize;
+uniform sampler2D image;
+
+// Barrel/pincushion distortion coefficient.
+// See https://en.wikipedia.org/wiki/Distortion_(optics)
+uniform float barrelPercent;
+
+void main() {
+    vec2 scaledTexCoord = (textureCoord - vec2(0.5, 0.5)) * textureSize;
+    float r2 = dot(scaledTexCoord, scaledTexCoord);
+    vec2 srcScaledTexCoord = scaledTexCoord * (1.0 + 1e-2 * barrelPercent * r2);
+    gl_FragColor = texture2D(image, (srcScaledTexCoord / textureSize) + vec2(0.5, 0.5));
+}
+</script>
+
+<script type="x-shader/vertex" id="floorVertexShader">
+varying vec3 imageCoordHomog;
+void main() {
+    vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+    imageCoordHomog = vec3(modelPosition.xy, modelPosition.w);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+</script>
+<script type="x-shader/fragment" id="floorFragmentShader">
+// #extension GL_OES_standard_derivatives : enable
+
+varying vec3 imageCoordHomog;
+uniform mat3 floorMatrix;
+uniform float floorOpacity, floorRadius;
+
+void main() {
+    vec3 floorCoordHomog = floorMatrix * imageCoordHomog;
+    if(floorCoordHomog.z <= 0.0) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+    } else {
+        float floorBrightness = 0.5;
+
+        vec2 floorCoord = floorCoordHomog.xy / floorCoordHomog.z;
+        float floorRad = length(floorCoord);
+
+        // want 1x1m checkerboard
+        vec2 floorFrac = fract(0.5 * floorCoord) - 0.5;
+        float checkerQuad = floorFrac.x * floorFrac.y;
+        floorBrightness = sign(checkerQuad);
+
+        float alpha = floorOpacity *
+            (1.0 - smoothstep(0.8 * floorRadius, 1.2 * floorRadius, floorRad));
+        gl_FragColor = vec4(vec3(1.0, 1.0, 1.0) * floorBrightness, alpha);
+    }
+}
+</script>
+
+    <script src="http://jsxgraph.uni-bayreuth.de/distrib/jsxgraphcore.js"></script>
+    <script src="http://www.numericjs.com/lib/numeric-1.2.6.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r73/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.5.1/dat.gui.min.js"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
