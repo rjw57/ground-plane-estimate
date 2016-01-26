@@ -5,7 +5,70 @@
 function main() {
     var imgUrl = 'trumpington.png';
 
-    var board = JXG.JSXGraph.initBoard('board', {
+    ffUi = new FloorFindUI('image-ui');
+    ffUi.loadImage(imgUrl);
+
+    window.addEventListener('resize', function() { ffUi.containerResized(); });
+
+    // Create parameter GUI
+    var gui = new dat.GUI();
+    gui.add(ffUi, 'floorOpacity', 0.0, 1.0);
+    gui.add(ffUi, 'floorRadius', 1, 50);
+    gui.add(ffUi, 'barrelDistortion', -50, 20);
+
+    function render() {
+        window.requestAnimationFrame(render);
+        ffUi.render();
+    }
+    window.requestAnimationFrame(render);
+}
+
+// Object representing a UI for finding floor planes. Takes a single element or
+// element id which contains the UI.
+function FloorFindUI(containerElement) {
+    var self = this;
+
+    self.containerElement = containerElement;
+    if(typeof(self.containerElement) === 'string') {
+        self.containerElement = document.getElementById(self.containerElement);
+    }
+
+    self.floorOpacity = 0.25;
+    self.floorRadius = 20.0;
+    self.barrelDistortion = 0;
+
+    // Create container within container with position: relative to enable
+    // absolute positioning within it.
+    var _uiElement = document.createElement('div');
+    _uiElement.style.position = 'relative';
+    _uiElement.style.backgroundColor = '#888';
+    _uiElement.style.width = '100%';
+    _uiElement.style.height = '100%';
+    _uiElement.style.overflow = 'hidden';
+    self.containerElement.appendChild(_uiElement);
+
+    var boardId = 'floor-ui-board-' + Math.random().toString(16).slice(2);
+    var floorId = 'floor-ui-floor-' + Math.random().toString(16).slice(2);
+
+    function createUIChild(id) {
+        var childElement = document.createElement('div');
+        childElement.id = id;
+        childElement.style.position = 'absolute';
+        childElement.style.width = '100%';
+        childElement.style.height = '100%';
+        childElement.style.top = '0';
+        childElement.style.bottom = '0';
+        _uiElement.appendChild(childElement);
+        return childElement;
+    }
+
+    // Now create the elements for the WebGL-rendered floor and the JSXGraph
+    // board.
+    var floorElement = createUIChild(floorId);
+    var boardElement = createUIChild(boardId);
+
+    // Create the JSXGraph board
+    self._board = JXG.JSXGraph.initBoard(boardId, {
         boundingbox: [-100, 1180, 2020, -100],
         axis: false, grid: false,
         keepAspectRatio: true,
@@ -14,141 +77,165 @@ function main() {
         showCopyright: false,
     });
 
-    var floorRenderer = new FloorRenderer(
-        document.getElementById('floor'), imgUrl
-    );
+    // Create the floor-rendering context
+    self._floorRenderer = new FloorRenderer(floorElement);
 
-    // Create GUI
-    var gui = new dat.GUI();
-    gui.add(floorRenderer, 'floorOpacity', 0.0, 1.0);
-    gui.add(floorRenderer, 'floorRadius', 5, 30);
-    gui.add(floorRenderer, 'barrelPercent', -40, 40);
+    // Create the JSXGraph geometry
+    var w = 640, h = 480;
+    var vp1 = self._board.create('point', [0, h*0.5], { name: 'VP1' });
+    var vp2 = self._board.create('point', [w, h*0.5], { name: 'VP2' });
+    var horizon = self._board.create('line', [vp1, vp2], { label: 'Horizon' });
 
-    function render() {
-        window.requestAnimationFrame(render);
-        floorRenderer.render();
-    }
-    window.requestAnimationFrame(render);
+    var pB = self._board.create('point', [w*0.5, h*0.125], { name: 'B' });
+    var l11 = self._board.create('line', [vp1, pB],
+        { straightFirst: false, fixed: true, highlight: false });
+    var l12 = self._board.create('line', [vp2, pB],
+        { straightFirst: false, fixed: true, highlight: false });
+
+    var pD = self._board.create('point', [w*0.5, h*0.25], { name: 'D' });
+    var l21 = self._board.create('line', [vp1, pD],
+        { straightFirst: false, fixed: true, highlight: false });
+    var l22 = self._board.create('line', [vp2, pD],
+        { straightFirst: false, fixed: true, highlight: false });
+
+    var pA = self._board.create('intersection', [l21, l12],
+        { name: 'A', fixed: true, highlight: false });
+    var pC = self._board.create('intersection', [l22, l11],
+        { name: 'C', fixed: true, highlight: false });
+
+    self._pA = pA;
+    self._pB = pB;
+    self._pC = pC;
+    self._pD = pD;
+    self._vp1 = vp1;
+    self._vp2 = vp2;
+    self.imageToFloorMatrix = null;
 
     function setFloorCamera() {
         // There's a new bounding box. Bounding boxes in JSXGraph are arrays
         // giving [left, top, right, bottom] co-ords. Use this bounding box to
         // update floor renderer.
-        var bbox = board.getBoundingBox();
-        floorRenderer.camera.left = bbox[0];
-        floorRenderer.camera.top = bbox[1];
-        floorRenderer.camera.right = bbox[2];
-        floorRenderer.camera.bottom = bbox[3];
-        floorRenderer.camera.updateProjectionMatrix();
+        var bbox = self._board.getBoundingBox();
+        self._floorRenderer.camera.left = bbox[0];
+        self._floorRenderer.camera.top = bbox[1];
+        self._floorRenderer.camera.right = bbox[2];
+        self._floorRenderer.camera.bottom = bbox[3];
+        self._floorRenderer.camera.updateProjectionMatrix();
+        self._floorRenderer.containerResized();
     };
-    board.on('boundingbox', setFloorCamera);
+    self._board.on('boundingbox', setFloorCamera);
 
-    window.addEventListener('resize', function() {
-        var elem = board.containerObj;
-        board.renderer.resize(elem.clientWidth, elem.clientHeight);
-        board.setBoundingBox(board.getBoundingBox(), true);
-    });
-
-    floorRenderer.texturePromise.then(function(texture) {
-        var w = texture.image.width, h = texture.image.height;
-        board.setBoundingBox([-0.2*w, 1.2*h, 1.2*w, -0.2*h], true);
-
-        var vp1 = board.create('point', [0, h*0.5], { name: 'VP1' });
-        var vp2 = board.create('point', [w, h*0.5], { name: 'VP2' });
-        var horizon = board.create('line', [vp1, vp2], { label: 'Horizon' });
-
-        var pB = board.create('point', [w*0.5, h*0.125], { name: 'B' });
-        var l11 = board.create('line', [vp1, pB],
-            { straightFirst: false, fixed: true, highlight: false });
-        var l12 = board.create('line', [vp2, pB],
-            { straightFirst: false, fixed: true, highlight: false });
-
-        var pD = board.create('point', [w*0.5, h*0.25], { name: 'D' });
-        var l21 = board.create('line', [vp1, pD],
-            { straightFirst: false, fixed: true, highlight: false });
-        var l22 = board.create('line', [vp2, pD],
-            { straightFirst: false, fixed: true, highlight: false });
-
-        var pA = board.create('intersection', [l21, l12],
-            { name: 'A', fixed: true, highlight: false });
-        var pC = board.create('intersection', [l22, l11],
-            { name: 'C', fixed: true, highlight: false });
-
-        function updateHomography() {
-            var H = computeHomography([
-                { x: pA.X(), y: pA.Y() },
-                { x: pB.X(), y: pB.Y() },
-                { x: pC.X(), y: pC.Y() },
-                { x: pD.X(), y: pD.Y() },
-            ], [
-                { x: 0, y: 0 },
-                { x: 1, y: 0 },
-                { x: 1, y: 1 },
-                { x: 0, y: 1 },
-            ]);
-
-            floorRenderer.floorMatrix.set(
-                H[0], H[1], H[2],
-                H[3], H[4], H[5],
-                H[6], H[7], 1.0
-            );
-        }
-
-        board.on('update', updateHomography);
-        updateHomography();
-    });
+    self.updateProjectionMatrix();
+    self._board.on('update', function() { self.updateProjectionMatrix(); });
 }
+
+FloorFindUI.prototype.containerResized = function() {
+    var elem = this.containerElement;
+    this._board.renderer.resize(elem.clientWidth, elem.clientHeight);
+    this._board.setBoundingBox(this._board.getBoundingBox(), true);
+    this._floorRenderer.containerResized();
+};
+
+FloorFindUI.prototype.render = function() {
+    this._floorRenderer.floorOpacity = this.floorOpacity;
+    this._floorRenderer.floorRadius = this.floorRadius;
+    this._floorRenderer.barrelPercent = this.barrelDistortion;
+    this._floorRenderer.render();
+};
+
+FloorFindUI.prototype.loadImage = function(texUrl) {
+    var self = this;
+    return self._floorRenderer.loadTexture(texUrl).then(function(texture) {
+        var w = texture.image.width, h = texture.image.height;
+        self._board.setBoundingBox([-0.2*w, 1.2*h, 1.2*w, -0.2*h], true);
+        self._vp1.setPosition(JXG.COORDS_BY_USER, [0, h*0.5]);
+        self._vp2.setPosition(JXG.COORDS_BY_USER, [w, h*0.5]);
+        self._pB.setPosition(JXG.COORDS_BY_USER, [w*0.5, h*0.125]);
+        self._pD.setPosition(JXG.COORDS_BY_USER, [w*0.5, h*0.25]);
+        self._board.update();
+    });
+};
+
+FloorFindUI.prototype.updateProjectionMatrix = function() {
+    var self = this;
+
+    var H = computeHomography([
+        { x: self._pA.X(), y: self._pA.Y() },
+        { x: self._pB.X(), y: self._pB.Y() },
+        { x: self._pC.X(), y: self._pC.Y() },
+        { x: self._pD.X(), y: self._pD.Y() },
+    ], [
+        { x: 0, y: 0 },
+        { x: 1, y: 0 },
+        { x: 1, y: 1 },
+        { x: 0, y: 1 },
+    ]);
+
+    self._floorRenderer.floorMatrix.set(
+        H[0], H[1], H[2],
+        H[3], H[4], H[5],
+        H[6], H[7], 1.0
+    );
+
+    self.imageToFloorMatrix = [
+        [ H[0], H[1], H[2], ],
+        [ H[3], H[4], H[5], ],
+        [ H[6], H[7], 1.0, ],
+    ];
+};
 
 // Create ThreeJS context for rendering floor.
 function FloorRenderer(containerElement, textureUrl) {
     var self = this;
 
-    this.containerElement = containerElement;
-    this.scene = new THREE.Scene();
-    this.camera = new THREE.OrthographicCamera(0, 100, 0, 100, 0, 2);
-    this.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
-    this.floorMatrix = new THREE.Matrix3();
-    this.floorOpacity = 0.25;
-    this.floorRadius = 15;
-    this.barrelPercent = 0.0;
+    self.containerElement = containerElement;
+    self.scene = new THREE.Scene();
+    self.camera = new THREE.OrthographicCamera(0, 100, 0, 100, 0, 2);
+    self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
+    self.floorMatrix = new THREE.Matrix3();
+    self.floorOpacity = 0.25;
+    self.floorRadius = 15;
+    self.barrelPercent = 0.0;
 
-    this.floorMaterial = null;
-    this.imageMaterial = null;
+    self.floorMaterial = null;
+    self.imageMaterial = null;
 
-    this.camera.position.z = 1;
-    this.containerElement.appendChild(this.renderer.domElement);
+    self.camera.position.z = 1;
+    self.containerElement.appendChild(self.renderer.domElement);
 
-    // Wire up rendering and resize functions
-    function onResize() {
-        var elem = self.containerElement;
-        self.renderer.setSize(elem.clientWidth, elem.clientHeight);
+    self.containerResized();
+}
+
+FloorRenderer.prototype.containerResized = function() {
+    var elem = this.containerElement;
+    this.renderer.setSize(elem.clientWidth, elem.clientHeight);
+}
+
+FloorRenderer.prototype.render = function() {
+    var uniforms;
+
+    if(this.floorMaterial) {
+        uniforms = this.floorMaterial.uniforms;
+        uniforms.floorMatrix.value = this.floorMatrix;
+        uniforms.floorOpacity.value = this.floorOpacity;
+        uniforms.floorRadius.value = this.floorRadius;
     }
-    window.addEventListener('resize', onResize);
-    onResize();
-
-    this.render = function() {
-        var uniforms;
-
-        if(self.floorMaterial) {
-            uniforms = self.floorMaterial.uniforms;
-            uniforms.floorMatrix.value = self.floorMatrix;
-            uniforms.floorOpacity.value = self.floorOpacity;
-            uniforms.floorRadius.value = self.floorRadius;
-        }
-        if(self.imageMaterial) {
-            uniforms = self.imageMaterial.uniforms;
-            uniforms.barrelPercent.value = self.barrelPercent;
-        }
-        self.renderer.render(self.scene, self.camera);
+    if(this.imageMaterial) {
+        uniforms = this.imageMaterial.uniforms;
+        uniforms.barrelPercent.value = this.barrelPercent;
     }
+    this.renderer.render(this.scene, this.camera);
+}
 
-    // Load background texture
+FloorRenderer.prototype.loadTexture = function(textureUrl) {
+    var self = this;
+
     var loader = new THREE.TextureLoader();
-    this.texturePromise = new Promise(function(resolve, reject) {
+    var texturePromise = new Promise(function(resolve, reject) {
         loader.load(textureUrl, resolve, null, reject);
     });
 
-    this.texturePromise.then(function(texture) {
+    texturePromise.then(function(texture) {
         texture.magFilter = THREE.NearestFilter;
 
         var w = texture.image.width, h = texture.image.height;
@@ -185,6 +272,8 @@ function FloorRenderer(containerElement, textureUrl) {
         floor.position.y = h * 0.5;
         self.scene.add(floor);
     });
+
+    return texturePromise;
 }
 
 // Compute 3x3 matrix H which maps image-plane to floor-plane homogenous
