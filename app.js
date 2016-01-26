@@ -47,6 +47,8 @@ function main() {
     gui.add(ffUi, 'floorOpacity', 0.0, 1.0);
     gui.add(ffUi, 'floorRadius', 1, 50);
     gui.add(ffUi, 'barrelDistortion', -50, 20);
+    gui.add(ffUi, 'xScale', 0, 3);
+    gui.add(ffUi, 'yScale', 0, 3);
     gui.add(actions, 'download');
 
     function render() {
@@ -229,6 +231,11 @@ function FloorFindUI(containerElement) {
     self.floorOpacity = 0.25;
     self.floorRadius = 20.0;
     self.barrelDistortion = 0;
+    self.xScale = 1.0;
+    self.yScale = 1.0;
+
+    self._cachedXScale = self.xScale;
+    self._cachedYScale = self.yScale;
 
     // Create container within container with position: relative to enable
     // absolute positioning within it.
@@ -331,6 +338,10 @@ FloorFindUI.prototype.containerResized = function() {
 };
 
 FloorFindUI.prototype.render = function() {
+    if((this.xScale != this._cachedXScale) || (this.yScale != this._cachedYScale)) {
+        this.updateProjectionMatrix();
+    }
+
     this._floorRenderer.floorOpacity = this.floorOpacity;
     this._floorRenderer.floorRadius = this.floorRadius;
     this._floorRenderer.barrelPercent = this.barrelDistortion;
@@ -359,11 +370,14 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         { x: self._pC.X(), y: self._pC.Y() },
         { x: self._pD.X(), y: self._pD.Y() },
     ], [
-        { x: 1, y: 0 },
+        { x: self.xScale, y: 0 },
         { x: 0, y: 0 },
-        { x: 0, y: 1 },
-        { x: 1, y: 1 },
+        { x: 0, y: self.yScale },
+        { x: self.xScale, y: self.yScale },
     ]);
+
+    self._cachedXScale = self.xScale;
+    self._cachedYScale = self.yScale;
 
     self._floorRenderer.floorMatrix.set(
         H[0], H[1], H[2],
