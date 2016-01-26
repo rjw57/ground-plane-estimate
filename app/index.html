@@ -45,7 +45,7 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 
     // scale coord
     float r2 = dot(coord, coord);
-    coord *= (1.0 + 1e-2 * barrelPercent * r2);
+    coord *= max(0.0, 1.0 + 1e-2 * barrelPercent * r2);
 
     // convert back
     coord *= 0.5 * textureSize.x;
@@ -59,8 +59,7 @@ void main() {
     vec2 imgCoord = imgCoordHomog.xy / imgCoordHomog.z;
 
     // Correct distortion
-    vec2 texCoord = imgCoord / textureSize;
-    vec2 distTexCoord = undistortImgToDistortImg(imgCoord) / textureSize;
+    vec2 texCoord = undistortImgToDistortImg(imgCoord) / textureSize;
 
     float alpha = 1.0 - smoothstep(0.8 * floorRadius, 1.2 * floorRadius,
         length(floorCoord));
@@ -68,7 +67,7 @@ void main() {
     // Clip to image
     if((imgCoordHomog.z > 0.0) && (texCoord.x >= 0.0) && (texCoord.y >= 0.0)
             && (texCoord.x < 1.0) && (texCoord.y < 1.0)) {
-        gl_FragColor = alpha * texture2D(image, distTexCoord)
+        gl_FragColor = alpha * texture2D(image, texCoord)
             + (1.0 - alpha) * vec4(0.0, 0.0, 0.0, 0.0);
     } else{
         gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
@@ -79,10 +78,11 @@ void main() {
 <!-- HACK: place GLSL code here for extraction. -->
 <script type="x-shader/vertex" id="imageVertexShader">
 varying vec2 imgCoord;
-uniform vec2 textureSize;
+uniform vec4 viewBounds;
 
 void main() {
-    imgCoord = uv * textureSize;
+    imgCoord = uv * (viewBounds.zy - viewBounds.xw);
+    imgCoord += viewBounds.xw;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 </script>
@@ -105,7 +105,7 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 
     // scale coord
     float r2 = dot(coord, coord);
-    coord *= (1.0 + 1e-2 * barrelPercent * r2);
+    coord *= 1.0 + 1e-2 * barrelPercent * r2;
 
     // convert back
     coord *= 0.5 * textureSize.x;
@@ -116,27 +116,35 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 
 void main() {
     vec2 distortImgCoord = undistortImgToDistortImg(imgCoord);
-    gl_FragColor = texture2D(image, distortImgCoord / textureSize);
+    vec2 texCoord = distortImgCoord / textureSize;
+    if((texCoord.x >= 0.0) && (texCoord.y >= 0.0)
+            && (texCoord.x < 1.0) && (texCoord.y < 1.0)) {
+        gl_FragColor = texture2D(image, texCoord);
+    } else {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+    }
 }
 </script>
 
 <script type="x-shader/vertex" id="floorVertexShader">
-varying vec3 imageCoordHomog;
+varying vec2 imgCoord;
+uniform vec4 viewBounds;
 void main() {
+    imgCoord = uv * (viewBounds.zy - viewBounds.xw);
+    imgCoord += viewBounds.xw;
     vec4 modelPosition = modelMatrix * vec4(position, 1.0);
-    imageCoordHomog = vec3(modelPosition.xy, modelPosition.w);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 </script>
 <script type="x-shader/fragment" id="floorFragmentShader">
 // #extension GL_OES_standard_derivatives : enable
 
-varying vec3 imageCoordHomog;
+varying vec2 imgCoord;
 uniform mat3 floorMatrix;
 uniform float floorOpacity, floorRadius;
 
 void main() {
-    vec3 floorCoordHomog = floorMatrix * imageCoordHomog;
+    vec3 floorCoordHomog = floorMatrix * vec3(imgCoord, 1.0);
     if(floorCoordHomog.z <= 0.0) {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
     } else {
