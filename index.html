@@ -45,7 +45,15 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 
     // scale coord
     float r2 = dot(coord, coord);
-    coord *= max(0.0, 1.0 + 1e-2 * barrelPercent * r2);
+    float k = 1e-2 * barrelPercent;
+
+    // r -> r + k * r^3 
+    // d/dr = 1 + 3kr^2
+    if(1.0 + 3.0 * k * r2 > 0.0) {
+        coord *= 1.0 + k * r2;
+    } else {
+        coord *= 1e20;
+    }
 
     // convert back
     coord *= 0.5 * textureSize.x;
@@ -98,14 +106,21 @@ uniform float barrelPercent;
 
 vec2 undistortImgToDistortImg(vec2 coord) {
     // convert co-ordinate to 0,0 == centre
-    coord -= 0.5 * textureSize;
-
     // convert co-ordinate to x in range [-1, 1]
+    coord -= 0.5 * textureSize;
     coord /= 0.5 * textureSize.x;
 
     // scale coord
     float r2 = dot(coord, coord);
-    coord *= 1.0 + 1e-2 * barrelPercent * r2;
+    float k = 1e-2 * barrelPercent;
+
+    // r -> r + k * r^3 
+    // d/dr = 1 + 3kr^2
+    if(1.0 + 3.0 * k * r2 > 0.0) {
+        coord *= 1.0 + k * r2;
+    } else {
+        coord *= 1e20;
+    }
 
     // convert back
     coord *= 0.5 * textureSize.x;
@@ -156,11 +171,16 @@ void main() {
         // want 1x1m checkerboard
         vec2 floorFrac = fract(0.5 * floorCoord) - 0.5;
         float checkerQuad = floorFrac.x * floorFrac.y;
-        floorBrightness = sign(checkerQuad);
+        floorBrightness = (checkerQuad > 0.0) ? 0.75 : 0.25;
+
+        vec3 floorColour = vec3(1.0, 1.0, 1.0);
+        if(dot(floorCoord, floorCoord) < 1.0) {
+            floorColour = vec3(1.0, 0.0, 0.0);
+        }
 
         float alpha = floorOpacity *
             (1.0 - smoothstep(0.8 * floorRadius, 1.2 * floorRadius, floorRad));
-        gl_FragColor = vec4(vec3(1.0, 1.0, 1.0) * floorBrightness, alpha);
+        gl_FragColor = vec4(floorColour * floorBrightness, alpha);
     }
 }
 </script>
