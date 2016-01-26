@@ -53,15 +53,36 @@ function main() {
 
     var state = {
         xScale: 1, yScale: 1,
+        xOffset: 0, yOffset: 0,
+        theta: 0,
     };
 
     function updateFloorTransform() {
         var s = state;
-        ffUi.setFloorPlaneTransform([
+
+        var scale = [
             [s.xScale, 0, 0],
             [0, s.yScale, 0],
             [0, 0, 1],
-        ]);
+        ];
+
+        var shift = [
+            [1, 0, s.xOffset],
+            [0, 1, s.yOffset],
+            [0, 0, 1],
+        ];
+
+        var thetaRad = 2.0 * Math.PI * (s.theta / 360.0);
+        var ct = Math.cos(thetaRad), st = Math.sin(thetaRad);
+        var rot = [
+            [ct, -st, 0],
+            [st, ct, 0],
+            [0, 0, 1],
+        ];
+
+        ffUi.setFloorPlaneTransform(
+            numeric.dot(rot, numeric.dot(scale, shift))
+        );
     }
 
     // Create parameter GUI
@@ -71,6 +92,9 @@ function main() {
     gui.add(ffUi, 'barrelDistortion', -50, 20);
     gui.add(state, 'xScale', 0, 3).onChange(updateFloorTransform);
     gui.add(state, 'yScale', 0, 3).onChange(updateFloorTransform);
+    gui.add(state, 'xOffset', -10, 10).onChange(updateFloorTransform);
+    gui.add(state, 'yOffset', -10, 10).onChange(updateFloorTransform);
+    gui.add(state, 'theta', -200, 200).onChange(updateFloorTransform);
     gui.add(actions, 'download');
 
     function render() {
