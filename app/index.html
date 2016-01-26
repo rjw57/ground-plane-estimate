@@ -171,11 +171,16 @@ void main() {
         // want 1x1m checkerboard
         vec2 floorFrac = fract(0.5 * floorCoord) - 0.5;
         float checkerQuad = floorFrac.x * floorFrac.y;
-        floorBrightness = sign(checkerQuad);
+        floorBrightness = (checkerQuad > 0.0) ? 0.75 : 0.25;
+
+        vec3 floorColour = vec3(1.0, 1.0, 1.0);
+        if(dot(floorCoord, floorCoord) < 1.0) {
+            floorColour = vec3(1.0, 0.0, 0.0);
+        }
 
         float alpha = floorOpacity *
             (1.0 - smoothstep(0.8 * floorRadius, 1.2 * floorRadius, floorRad));
-        gl_FragColor = vec4(vec3(1.0, 1.0, 1.0) * floorBrightness, alpha);
+        gl_FragColor = vec4(floorColour * floorBrightness, alpha);
     }
 }
 </script>

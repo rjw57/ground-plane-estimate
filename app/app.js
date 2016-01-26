@@ -51,13 +51,26 @@ function main() {
         },
     };
 
+    var state = {
+        xScale: 1, yScale: 1,
+    };
+
+    function updateFloorTransform() {
+        var s = state;
+        ffUi.setFloorPlaneTransform([
+            [s.xScale, 0, 0],
+            [0, s.yScale, 0],
+            [0, 0, 1],
+        ]);
+    }
+
     // Create parameter GUI
     var gui = new dat.GUI();
     gui.add(ffUi, 'floorOpacity', 0.0, 1.0);
     gui.add(ffUi, 'floorRadius', 1, 50);
     gui.add(ffUi, 'barrelDistortion', -50, 20);
-    gui.add(ffUi, 'xScale', 0, 3);
-    gui.add(ffUi, 'yScale', 0, 3);
+    gui.add(state, 'xScale', 0, 3).onChange(updateFloorTransform);
+    gui.add(state, 'yScale', 0, 3).onChange(updateFloorTransform);
     gui.add(actions, 'download');
 
     function render() {
@@ -215,11 +228,14 @@ function FloorFindUI(containerElement) {
     self.floorOpacity = 0.25;
     self.floorRadius = 20.0;
     self.barrelDistortion = 0;
-    self.xScale = 1.0;
-    self.yScale = 1.0;
 
-    self._cachedXScale = self.xScale;
-    self._cachedYScale = self.yScale;
+    // Affine transform to apply to floor plane.
+    var floorPlaneTransform = numeric.identity(3);
+    self.getFloorPlaneTransform = function() { return floorPlaneTransform; }
+    self.setFloorPlaneTransform = function(t) {
+        floorPlaneTransform = t;
+        this.updateProjectionMatrix();
+    }
 
     // Create container within container with position: relative to enable
     // absolute positioning within it.
@@ -319,10 +335,6 @@ FloorFindUI.prototype.containerResized = function() {
 };
 
 FloorFindUI.prototype.render = function() {
-    if((this.xScale != this._cachedXScale) || (this.yScale != this._cachedYScale)) {
-        this.updateProjectionMatrix();
-    }
-
     this._floorRenderer.floorOpacity = this.floorOpacity;
     this._floorRenderer.floorRadius = this.floorRadius;
     this._floorRenderer.barrelPercent = this.barrelDistortion;
@@ -344,20 +356,33 @@ FloorFindUI.prototype.initialiseFromTexture = function() {
 FloorFindUI.prototype.updateProjectionMatrix = function() {
     var self = this;
 
+    var floorPoints = numeric.dot(
+        self.getFloorPlaneTransform(),
+        [
+            [1, 0, 0, 1],
+            [0, 0, 1, 1],
+            [1, 1, 1, 1],
+        ]
+    );
+
+    for(var i=0; i<4; ++i) {
+        var w = floorPoints[2][i];
+        for(var j=0; j<3; ++j) {
+            floorPoints[j][i] /= w;
+        }
+    }
+
     var H = computeHomography([
         { x: self._pA.X(), y: self._pA.Y() },
         { x: self._pB.X(), y: self._pB.Y() },
         { x: self._pC.X(), y: self._pC.Y() },
         { x: self._pD.X(), y: self._pD.Y() },
     ], [
-        { x: self.xScale, y: 0 },
-        { x: 0, y: 0 },
-        { x: 0, y: self.yScale },
-        { x: self.xScale, y: self.yScale },
+        { x: floorPoints[0][0], y: floorPoints[1][0] },
+        { x: floorPoints[0][1], y: floorPoints[1][1] },
+        { x: floorPoints[0][2], y: floorPoints[1][2] },
+        { x: floorPoints[0][3], y: floorPoints[1][3] },
     ]);
-
-    self._cachedXScale = self.xScale;
-    self._cachedYScale = self.yScale;
 
     self._floorRenderer.floorMatrix.set(
         H[0], H[1], H[2],
