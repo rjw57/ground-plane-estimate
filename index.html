@@ -174,7 +174,7 @@ void main() {
         floorBrightness = (checkerQuad > 0.0) ? 0.75 : 0.25;
 
         vec3 floorColour = vec3(1.0, 1.0, 1.0);
-        if(dot(floorCoord, floorCoord) < 1.0) {
+        if(dot(floorCoord, floorCoord) < 0.5 * 0.5) {
             floorColour = vec3(1.0, 0.0, 0.0);
         }
 
