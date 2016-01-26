@@ -7,8 +7,12 @@
 </head>
 
 <body>
-    <div id="image-ui"></div>
-    <div id="floor-preview"></div>
+<div id="floor-pane" class="split split-horizontal">
+    <div id="floor-preview" class="split content"></div>
+</div>
+<div id="image-pane" class="split split-horizontal">
+    <div id="image-ui" class="split content"></div>
+</div>
 
 <script type="x-shader/vertex" id="previewVertexShader">
 varying vec2 floorCoord;
@@ -158,6 +162,7 @@ void main() {
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r73/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.5.1/dat.gui.min.js"></script>
     <script src="FileSaver.min.js"></script>
+    <script src="split.min.js"></script>
     <script src="app.js"></script>
 </body>
 

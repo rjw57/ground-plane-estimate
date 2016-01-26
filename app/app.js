@@ -5,16 +5,24 @@
 function main() {
     var imgUrl = 'trumpington.png';
 
-    ffUi = new FloorFindUI('image-ui');
-    ffUi.loadImage(imgUrl);
+    Split(['#floor-pane', '#image-pane'], {
+        gutterSize: 8,
+        cursor: 'col-resize',
+        onDrag: onUiResize,
+        sizes: [33, 67],
+    });
 
+    ffUi = new FloorFindUI('image-ui');
     fpUi = new FloorPreviewUI('floor-preview', ffUi);
+
+    ffUi.loadImage(imgUrl);
     fpUi.loadImage(imgUrl);
 
-    window.addEventListener('resize', function() {
+    function onUiResize() {
         ffUi.containerResized();
         fpUi.containerResized();
-    });
+    }
+    window.addEventListener('resize', onUiResize);
 
     var actions = {
         download: function() {
