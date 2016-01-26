@@ -113,9 +113,8 @@ FloorPreviewUI.prototype.containerResized = function() {
 
 FloorPreviewUI.prototype.render = function() {
     this._floorRenderer.barrelPercent = this.propSource.barrelDistortion;
-    this._floorRenderer.floorToImageMatrix.getInverse(
-        this.propSource.imageToFloorMatrix
-    );
+    this._floorRenderer.floorToImageMatrix.copy(this.propSource.floorToImageMatrix);
+    this._floorRenderer.floorRadius = this.propSource.floorRadius;
     this._floorRenderer.render();
 };
 
@@ -131,11 +130,8 @@ FloorPreviewUI.prototype._setFloorCamera = function() {
     // giving [left, top, right, bottom] co-ords. Use this bounding box to
     // update floor renderer.
     var bbox = this._board.getBoundingBox();
-    this._floorRenderer.camera.left = bbox[0];
-    this._floorRenderer.camera.top = bbox[1];
-    this._floorRenderer.camera.right = bbox[2];
-    this._floorRenderer.camera.bottom = bbox[3];
     this._floorRenderer.camera.updateProjectionMatrix();
+    this._floorRenderer.viewBounds.set(bbox[0], bbox[1], bbox[2], bbox[3]);
     this._floorRenderer.containerResized();
 };
 
@@ -145,12 +141,12 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
 
     self.containerElement = containerElement;
     self.scene = new THREE.Scene();
-    self.camera = new THREE.OrthographicCamera(0, 100, 0, 100, 0, 2);
+    self.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 2);
     self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
     self.floorMatrix = new THREE.Matrix3();
-    self.floorOpacity = 0.25;
     self.floorRadius = 15;
     self.barrelPercent = 0.0;
+    self.viewBounds = new THREE.Vector4(-0.5, 0.5, 0.5, -0.5);
 
     self.floorMaterial = null;
     self.floorToImageMatrix = new THREE.Matrix3();
@@ -172,6 +168,7 @@ FloorPreviewRenderer.prototype.render = function() {
     if(this.floorMaterial) {
         uniforms = this.floorMaterial.uniforms;
         uniforms.barrelPercent.value = this.barrelPercent;
+        uniforms.floorRadius.value = this.floorRadius;
     }
     this.renderer.render(this.scene, this.camera);
 }
@@ -189,7 +186,7 @@ FloorPreviewRenderer.prototype.loadTexture = function(textureUrl) {
         texture.magFilter = THREE.NearestFilter;
 
         var w = texture.image.width, h = texture.image.height;
-        var geometry = new THREE.PlaneGeometry(20, 20, 1, 1);
+        var geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
 
         self.floorMaterial = new THREE.ShaderMaterial({
             vertexShader: document.getElementById('previewVertexShader').textContent,
@@ -199,6 +196,8 @@ FloorPreviewRenderer.prototype.loadTexture = function(textureUrl) {
                 textureSize: { type: 'v2', value: new THREE.Vector2(w, h) },
                 barrelPercent: { type: 'f', value: self.barrelPercent },
                 floorToImageMatrix: { type: 'm3', value: self.floorToImageMatrix },
+                viewBounds: { type: 'v4', value: self.viewBounds },
+                floorRadius: { type: 'f', value: self.floorRadius },
             },
         });
 
@@ -296,6 +295,7 @@ function FloorFindUI(containerElement) {
     self._vp1 = vp1;
     self._vp2 = vp2;
     self.imageToFloorMatrix = new THREE.Matrix3();
+    self.floorToImageMatrix = new THREE.Matrix3();
 
     function setFloorCamera() {
         // There's a new bounding box. Bounding boxes in JSXGraph are arrays
@@ -351,10 +351,10 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         { x: self._pC.X(), y: self._pC.Y() },
         { x: self._pD.X(), y: self._pD.Y() },
     ], [
-        { x: 0, y: 0 },
         { x: 1, y: 0 },
-        { x: 1, y: 1 },
+        { x: 0, y: 0 },
         { x: 0, y: 1 },
+        { x: 1, y: 1 },
     ]);
 
     self._floorRenderer.floorMatrix.set(
@@ -363,6 +363,19 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         H[6], H[7], 1.0
     );
     self.imageToFloorMatrix = self._floorRenderer.floorMatrix;
+
+    var A = [
+        [H[0], H[1], H[2]],
+        [H[3], H[4], H[5]],
+        [H[6], H[7], 1.0],
+    ];
+    var Ainv = numeric.inv(A);
+
+    self.floorToImageMatrix.set(
+        Ainv[0][0], Ainv[0][1], Ainv[0][2],
+        Ainv[1][0], Ainv[1][1], Ainv[1][2],
+        Ainv[2][0], Ainv[2][1], Ainv[2][2]
+    );
 };
 
 // Create ThreeJS context for rendering floor.
@@ -428,7 +441,7 @@ FloorRenderer.prototype.loadTexture = function(textureUrl) {
             fragmentShader: document.getElementById('imageFragmentShader').textContent,
             uniforms: {
                 image: { type: 't', value: texture },
-                textureSize: { type: 'v2', value: new THREE.Vector2(w/h, 1.0) },
+                textureSize: { type: 'v2', value: new THREE.Vector2(w, h) },
                 barrelPercent: { type: 'f', value: self.barrelPercent },
             },
         });

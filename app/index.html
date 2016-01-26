@@ -11,53 +11,79 @@
     <div id="floor-preview"></div>
 
 <script type="x-shader/vertex" id="previewVertexShader">
-varying vec3 floorCoordHomog;
+varying vec2 floorCoord;
+
+// vector giving [left, top, right, bottom] co-ords.
+uniform vec4 viewBounds;
 void main() {
     vec4 modelPosition = modelMatrix * vec4(position, 1.0);
-    floorCoordHomog = vec3(modelPosition.xy, modelPosition.w);
+    floorCoord = uv * (viewBounds.zy - viewBounds.xw);
+    floorCoord += viewBounds.xw;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 </script>
 <script type="x-shader/fragment" id="previewFragmentShader">
-varying vec3 floorCoordHomog;
+varying vec2 floorCoord;
 
 uniform vec2 textureSize;
 uniform sampler2D image;
-
 // Barrel/pincushion distortion coefficient.
 // See https://en.wikipedia.org/wiki/Distortion_(optics)
 uniform float barrelPercent;
-
 uniform mat3 floorToImageMatrix;
+uniform float floorRadius;
 
-// Like texture2D but takes undistorted pixel-space coord.
-vec4 sampleUndistortedImage(vec2 coord) {
-    vec2 normTexSize = vec2(textureSize.x / textureSize.y, 1.0);
-    coord = ((coord / textureSize) - 0.5) * normTexSize;
+vec2 undistortImgToDistortImg(vec2 coord) {
+    // convert co-ordinate to 0,0 == centre
+    // convert co-ordinate to x in range [-1, 1]
+    coord -= 0.5 * textureSize;
+    coord /= 0.5 * textureSize.x;
+
+    // scale coord
     float r2 = dot(coord, coord);
-    vec2 srcScaledTexCoord = coord * (1.0 + 1e-2 * barrelPercent * r2);
-    return texture2D(image, (srcScaledTexCoord / textureSize) + vec2(0.5, 0.5));
+    coord *= (1.0 + 1e-2 * barrelPercent * r2);
+
+    // convert back
+    coord *= 0.5 * textureSize.x;
+    coord += 0.5 * textureSize;
+
+    return coord;
 }
 
 void main() {
-    vec3 imgCoordHomog = floorToImageMatrix * floorCoordHomog;
+    vec3 imgCoordHomog = floorToImageMatrix * vec3(floorCoord, 1.0);
     vec2 imgCoord = imgCoordHomog.xy / imgCoordHomog.z;
-    //gl_FragColor = sampleUndistortedImage(floorCoordHomog.xy / floorCoordHomog.z);
-    //gl_FragColor = vec4(imgCoord, 0.0, 1.0);
-    gl_FragColor = sampleUndistortedImage(imgCoord);
+
+    // Correct distortion
+    vec2 texCoord = imgCoord / textureSize;
+    vec2 distTexCoord = undistortImgToDistortImg(imgCoord) / textureSize;
+
+    float alpha = 1.0 - smoothstep(0.8 * floorRadius, 1.2 * floorRadius,
+        length(floorCoord));
+
+    // Clip to image
+    if((imgCoordHomog.z > 0.0) && (texCoord.x >= 0.0) && (texCoord.y >= 0.0)
+            && (texCoord.x < 1.0) && (texCoord.y < 1.0)) {
+        gl_FragColor = alpha * texture2D(image, distTexCoord)
+            + (1.0 - alpha) * vec4(0.0, 0.0, 0.0, 0.0);
+    } else{
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
+    }
 }
 </script>
 
 <!-- HACK: place GLSL code here for extraction. -->
 <script type="x-shader/vertex" id="imageVertexShader">
-varying vec2 textureCoord;
+varying vec2 imgCoord;
+uniform vec2 textureSize;
+
 void main() {
-    textureCoord = uv;
+    imgCoord = uv * textureSize;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 </script>
 <script type="x-shader/fragment" id="imageFragmentShader">
-varying vec2 textureCoord;
+varying vec2 imgCoord;
 
 uniform vec2 textureSize;
 uniform sampler2D image;
@@ -66,11 +92,27 @@ uniform sampler2D image;
 // See https://en.wikipedia.org/wiki/Distortion_(optics)
 uniform float barrelPercent;
 
+vec2 undistortImgToDistortImg(vec2 coord) {
+    // convert co-ordinate to 0,0 == centre
+    coord -= 0.5 * textureSize;
+
+    // convert co-ordinate to x in range [-1, 1]
+    coord /= 0.5 * textureSize.x;
+
+    // scale coord
+    float r2 = dot(coord, coord);
+    coord *= (1.0 + 1e-2 * barrelPercent * r2);
+
+    // convert back
+    coord *= 0.5 * textureSize.x;
+    coord += 0.5 * textureSize;
+
+    return coord;
+}
+
 void main() {
-    vec2 scaledTexCoord = (textureCoord - vec2(0.5, 0.5)) * textureSize;
-    float r2 = dot(scaledTexCoord, scaledTexCoord);
-    vec2 srcScaledTexCoord = scaledTexCoord * (1.0 + 1e-2 * barrelPercent * r2);
-    gl_FragColor = texture2D(image, (srcScaledTexCoord / textureSize) + vec2(0.5, 0.5));
+    vec2 distortImgCoord = undistortImgToDistortImg(imgCoord);
+    gl_FragColor = texture2D(image, distortImgCoord / textureSize);
 }
 </script>
 
