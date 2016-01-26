@@ -8,19 +8,205 @@ function main() {
     ffUi = new FloorFindUI('image-ui');
     ffUi.loadImage(imgUrl);
 
-    window.addEventListener('resize', function() { ffUi.containerResized(); });
+    fpUi = new FloorPreviewUI('floor-preview', ffUi);
+    fpUi.loadImage(imgUrl);
+
+    window.addEventListener('resize', function() {
+        ffUi.containerResized();
+        fpUi.containerResized();
+    });
+
+    var actions = {
+        download: function() {
+            // makes use of saveAs function from FileSaver.min.js.
+            var columnMajorImageToFloorMatrix = [];
+            for(var i=0; i<9; ++i) {
+                columnMajorImageToFloorMatrix[i] = ffUi.imageToFloorMatrix.elements[i];
+            }
+            var str = JSON.stringify({
+                columnMajorImageToFloorMatrix: columnMajorImageToFloorMatrix,
+                barrelCorrection: {
+                    K1: ffUi.barrelDistortion * 1e-2,
+                },
+            });
+            var data = new Blob([str], {type:'application/json'});
+            saveAs(data, 'calibration.json');
+        },
+    };
 
     // Create parameter GUI
     var gui = new dat.GUI();
     gui.add(ffUi, 'floorOpacity', 0.0, 1.0);
     gui.add(ffUi, 'floorRadius', 1, 50);
     gui.add(ffUi, 'barrelDistortion', -50, 20);
+    gui.add(actions, 'download');
 
     function render() {
         window.requestAnimationFrame(render);
         ffUi.render();
+        fpUi.render();
     }
     window.requestAnimationFrame(render);
+}
+
+// Object representing a UI for previewing a floor plane
+function FloorPreviewUI(containerElement, propSource) {
+    var self = this;
+
+    self.containerElement = containerElement;
+    if(typeof(self.containerElement) === 'string') {
+        self.containerElement = document.getElementById(self.containerElement);
+    }
+
+    self.propSource = propSource;
+
+    // Create container within container with position: relative to enable
+    // absolute positioning within it.
+    var _uiElement = document.createElement('div');
+    _uiElement.style.position = 'relative';
+    _uiElement.style.backgroundColor = '#bbb';
+    _uiElement.style.width = '100%';
+    _uiElement.style.height = '100%';
+    _uiElement.style.overflow = 'hidden';
+    self.containerElement.appendChild(_uiElement);
+
+    var boardId = 'floor-preview-ui-board-' + Math.random().toString(16).slice(2);
+    var floorId = 'floor-preview-ui-floor-' + Math.random().toString(16).slice(2);
+
+    function createUIChild(id) {
+        var childElement = document.createElement('div');
+        childElement.id = id;
+        childElement.style.position = 'absolute';
+        childElement.style.width = '100%';
+        childElement.style.height = '100%';
+        childElement.style.top = '0';
+        childElement.style.bottom = '0';
+        _uiElement.appendChild(childElement);
+        return childElement;
+    }
+
+    // Now create the elements for the WebGL-rendered floor and the JSXGraph
+    // board.
+    var floorElement = createUIChild(floorId);
+    var boardElement = createUIChild(boardId);
+
+    // Create the JSXGraph board
+    self._board = JXG.JSXGraph.initBoard(boardId, {
+        boundingbox: [-10, 10, 10, -10],
+        axis: true, grid: true,
+        keepAspectRatio: true,
+        zoom: { wheel: true, },
+        pan: { needShift: false },
+        showCopyright: false,
+    });
+
+    self._floorRenderer = new FloorPreviewRenderer(floorElement);
+    self._board.on('boundingbox', function() { self._setFloorCamera(); });
+}
+
+FloorPreviewUI.prototype.containerResized = function() {
+    var elem = this.containerElement;
+    this._board.renderer.resize(elem.clientWidth, elem.clientHeight);
+    this._board.setBoundingBox(this._board.getBoundingBox(), true);
+    this._floorRenderer.containerResized();
+};
+
+FloorPreviewUI.prototype.render = function() {
+    this._floorRenderer.barrelPercent = this.propSource.barrelDistortion;
+    this._floorRenderer.floorToImageMatrix.getInverse(
+        this.propSource.imageToFloorMatrix
+    );
+    this._floorRenderer.render();
+};
+
+FloorPreviewUI.prototype.loadImage = function(texUrl) {
+    var self = this;
+    return this._floorRenderer.loadTexture(texUrl).then(function() {
+        self._setFloorCamera();
+    });
+};
+
+FloorPreviewUI.prototype._setFloorCamera = function() {
+    // There's a new bounding box. Bounding boxes in JSXGraph are arrays
+    // giving [left, top, right, bottom] co-ords. Use this bounding box to
+    // update floor renderer.
+    var bbox = this._board.getBoundingBox();
+    this._floorRenderer.camera.left = bbox[0];
+    this._floorRenderer.camera.top = bbox[1];
+    this._floorRenderer.camera.right = bbox[2];
+    this._floorRenderer.camera.bottom = bbox[3];
+    this._floorRenderer.camera.updateProjectionMatrix();
+    this._floorRenderer.containerResized();
+};
+
+// Create ThreeJS context for rendering floor.
+function FloorPreviewRenderer(containerElement, textureUrl) {
+    var self = this;
+
+    self.containerElement = containerElement;
+    self.scene = new THREE.Scene();
+    self.camera = new THREE.OrthographicCamera(0, 100, 0, 100, 0, 2);
+    self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
+    self.floorMatrix = new THREE.Matrix3();
+    self.floorOpacity = 0.25;
+    self.floorRadius = 15;
+    self.barrelPercent = 0.0;
+
+    self.floorMaterial = null;
+    self.floorToImageMatrix = new THREE.Matrix3();
+
+    self.camera.position.z = 1;
+    self.containerElement.appendChild(self.renderer.domElement);
+
+    self.containerResized();
+}
+
+FloorPreviewRenderer.prototype.containerResized = function() {
+    var elem = this.containerElement;
+    this.renderer.setSize(elem.clientWidth, elem.clientHeight);
+}
+
+FloorPreviewRenderer.prototype.render = function() {
+    var uniforms;
+
+    if(this.floorMaterial) {
+        uniforms = this.floorMaterial.uniforms;
+        uniforms.barrelPercent.value = this.barrelPercent;
+    }
+    this.renderer.render(this.scene, this.camera);
+}
+
+FloorPreviewRenderer.prototype.loadTexture = function(textureUrl) {
+    // FIXME: remove previous children from scene!
+    var self = this;
+
+    var loader = new THREE.TextureLoader();
+    var texturePromise = new Promise(function(resolve, reject) {
+        loader.load(textureUrl, resolve, null, reject);
+    });
+
+    texturePromise.then(function(texture) {
+        texture.magFilter = THREE.NearestFilter;
+
+        var w = texture.image.width, h = texture.image.height;
+        var geometry = new THREE.PlaneGeometry(20, 20, 1, 1);
+
+        self.floorMaterial = new THREE.ShaderMaterial({
+            vertexShader: document.getElementById('previewVertexShader').textContent,
+            fragmentShader: document.getElementById('previewFragmentShader').textContent,
+            uniforms: {
+                image: { type: 't', value: texture },
+                textureSize: { type: 'v2', value: new THREE.Vector2(w, h) },
+                barrelPercent: { type: 'f', value: self.barrelPercent },
+                floorToImageMatrix: { type: 'm3', value: self.floorToImageMatrix },
+            },
+        });
+
+        var floor = new THREE.Mesh(geometry, self.floorMaterial);
+        self.scene.add(floor);
+    });
+
+    return texturePromise;
 }
 
 // Object representing a UI for finding floor planes. Takes a single element or
@@ -109,7 +295,7 @@ function FloorFindUI(containerElement) {
     self._pD = pD;
     self._vp1 = vp1;
     self._vp2 = vp2;
-    self.imageToFloorMatrix = null;
+    self.imageToFloorMatrix = new THREE.Matrix3();
 
     function setFloorCamera() {
         // There's a new bounding box. Bounding boxes in JSXGraph are arrays
@@ -176,12 +362,7 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         H[3], H[4], H[5],
         H[6], H[7], 1.0
     );
-
-    self.imageToFloorMatrix = [
-        [ H[0], H[1], H[2], ],
-        [ H[3], H[4], H[5], ],
-        [ H[6], H[7], 1.0, ],
-    ];
+    self.imageToFloorMatrix = self._floorRenderer.floorMatrix;
 };
 
 // Create ThreeJS context for rendering floor.
@@ -228,6 +409,7 @@ FloorRenderer.prototype.render = function() {
 }
 
 FloorRenderer.prototype.loadTexture = function(textureUrl) {
+    // FIXME: remove previous children from scene!
     var self = this;
 
     var loader = new THREE.TextureLoader();
