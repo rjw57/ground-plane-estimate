@@ -7,11 +7,46 @@
 </head>
 
 <body>
-<!--
-    <div id="floor"></div>
-    <div id="board"></div>
-    -->
     <div id="image-ui"></div>
+    <div id="floor-preview"></div>
+
+<script type="x-shader/vertex" id="previewVertexShader">
+varying vec3 floorCoordHomog;
+void main() {
+    vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+    floorCoordHomog = vec3(modelPosition.xy, modelPosition.w);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+</script>
+<script type="x-shader/fragment" id="previewFragmentShader">
+varying vec3 floorCoordHomog;
+
+uniform vec2 textureSize;
+uniform sampler2D image;
+
+// Barrel/pincushion distortion coefficient.
+// See https://en.wikipedia.org/wiki/Distortion_(optics)
+uniform float barrelPercent;
+
+uniform mat3 floorToImageMatrix;
+
+// Like texture2D but takes undistorted pixel-space coord.
+vec4 sampleUndistortedImage(vec2 coord) {
+    vec2 normTexSize = vec2(textureSize.x / textureSize.y, 1.0);
+    coord = ((coord / textureSize) - 0.5) * normTexSize;
+    float r2 = dot(coord, coord);
+    vec2 srcScaledTexCoord = coord * (1.0 + 1e-2 * barrelPercent * r2);
+    return texture2D(image, (srcScaledTexCoord / textureSize) + vec2(0.5, 0.5));
+}
+
+void main() {
+    vec3 imgCoordHomog = floorToImageMatrix * floorCoordHomog;
+    vec2 imgCoord = imgCoordHomog.xy / imgCoordHomog.z;
+    //gl_FragColor = sampleUndistortedImage(floorCoordHomog.xy / floorCoordHomog.z);
+    //gl_FragColor = vec4(imgCoord, 0.0, 1.0);
+    gl_FragColor = sampleUndistortedImage(imgCoord);
+}
+</script>
 
 <!-- HACK: place GLSL code here for extraction. -->
 <script type="x-shader/vertex" id="imageVertexShader">
@@ -80,6 +115,7 @@ void main() {
     <script src="http://www.numericjs.com/lib/numeric-1.2.6.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r73/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.5.1/dat.gui.min.js"></script>
+    <script src="FileSaver.min.js"></script>
     <script src="app.js"></script>
 </body>
 
