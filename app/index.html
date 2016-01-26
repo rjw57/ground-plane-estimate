@@ -45,7 +45,15 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 
     // scale coord
     float r2 = dot(coord, coord);
-    coord *= max(0.0, 1.0 + 1e-2 * barrelPercent * r2);
+    float k = 1e-2 * barrelPercent;
+
+    // r -> r + k * r^3 
+    // d/dr = 1 + 3kr^2
+    if(1.0 + 3.0 * k * r2 > 0.0) {
+        coord *= 1.0 + k * r2;
+    } else {
+        coord *= 1e20;
+    }
 
     // convert back
     coord *= 0.5 * textureSize.x;
@@ -98,14 +106,21 @@ uniform float barrelPercent;
 
 vec2 undistortImgToDistortImg(vec2 coord) {
     // convert co-ordinate to 0,0 == centre
-    coord -= 0.5 * textureSize;
-
     // convert co-ordinate to x in range [-1, 1]
+    coord -= 0.5 * textureSize;
     coord /= 0.5 * textureSize.x;
 
     // scale coord
     float r2 = dot(coord, coord);
-    coord *= 1.0 + 1e-2 * barrelPercent * r2;
+    float k = 1e-2 * barrelPercent;
+
+    // r -> r + k * r^3 
+    // d/dr = 1 + 3kr^2
+    if(1.0 + 3.0 * k * r2 > 0.0) {
+        coord *= 1.0 + k * r2;
+    } else {
+        coord *= 1e20;
+    }
 
     // convert back
     coord *= 0.5 * textureSize.x;
