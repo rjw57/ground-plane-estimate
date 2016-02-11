@@ -175,7 +175,7 @@ FloorPreviewUI.prototype.render = function() {
     this._floorRenderer.containerResized();
 
     this._floorRenderer.barrelPercent = this.propSource.barrelDistortion;
-    this._floorRenderer.floorToImageMatrix.copy(this.propSource.floorToImageMatrix);
+    this._floorRenderer.worldToImageMatrix.copy(this.propSource.worldToImageMatrix);
     this._floorRenderer.floorRadius = this.propSource.floorRadius;
     this._floorRenderer.texture = this.texture;
     this._floorRenderer.render();
@@ -195,7 +195,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
     self.viewBounds = new THREE.Vector4(-0.5, 0.5, 0.5, -0.5);
     self.texture = null;
 
-    self.floorToImageMatrix = new THREE.Matrix3();
+    self.worldToImageMatrix = new THREE.Matrix3();
 
     var geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
     self.floorMaterial = new THREE.ShaderMaterial({
@@ -205,7 +205,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
             image: { type: 't', value: self.texture },
             textureSize: { type: 'v2', value: new THREE.Vector2(1, 1) },
             barrelPercent: { type: 'f', value: self.barrelPercent },
-            floorToImageMatrix: { type: 'm3', value: self.floorToImageMatrix },
+            worldToImageMatrix: { type: 'm3', value: self.worldToImageMatrix },
             viewBounds: { type: 'v4', value: self.viewBounds },
             floorRadius: { type: 'f', value: self.floorRadius },
         },
@@ -334,7 +334,7 @@ function FloorFindUI(containerElement) {
     self._vp1 = vp1;
     self._vp2 = vp2;
     self.imageToFloorMatrix = new THREE.Matrix3();
-    self.floorToImageMatrix = new THREE.Matrix3();
+    self.worldToImageMatrix = new THREE.Matrix3();
 
     function setFloorCamera() {
         // There's a new bounding box. Bounding boxes in JSXGraph are arrays
@@ -422,7 +422,7 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
     ];
     var Ainv = numeric.inv(A);
 
-    self.floorToImageMatrix.set(
+    self.worldToImageMatrix.set(
         Ainv[0][0], Ainv[0][1], Ainv[0][2],
         Ainv[1][0], Ainv[1][1], Ainv[1][2],
         Ainv[2][0], Ainv[2][1], Ainv[2][2]
