@@ -3,7 +3,8 @@
 // Entry point to application. Called after all functions and variables below
 // have been initialised.
 function main() {
-    var imgUrl = 'trumpington.png';
+    var imgUrl = 'trumpington.png', vidUrl = 'foo.mp4';
+    //, vidUrl = 'http://spica.eng.cam.ac.uk:8081/synchronised/cambridge-engineering-traffic-seq1-view1.mp4';
 
     Split(['#floor-pane', '#image-pane'], {
         gutterSize: 8,
@@ -15,6 +16,22 @@ function main() {
     ffUi = new FloorFindUI('image-ui');
     fpUi = new FloorPreviewUI('floor-preview', ffUi);
 
+    var video = document.createElement('video');
+    video.width = 1920;
+    video.height = 1080;
+    video.src = vidUrl;
+    video.autoplay = true;
+    video.loop = true;
+    //video.load();
+    //video.play();
+
+    var videoTex = new THREE.Texture(video);
+    videoTex.magFilter = THREE.NearestFilter;
+    ffUi.texture = videoTex;
+    ffUi.initialiseFromTexture();
+    fpUi.texture = videoTex;
+
+    /*
     var loader = new THREE.TextureLoader();
     var texPromise = new Promise(function(resolve, reject) {
         loader.load(imgUrl, resolve, null, reject);
@@ -26,6 +43,7 @@ function main() {
         ffUi.initialiseFromTexture();
         fpUi.texture = texture;
     });
+    */
 
     function onUiResize() {
         ffUi.containerResized();
@@ -99,6 +117,11 @@ function main() {
 
     function render() {
         window.requestAnimationFrame(render);
+        console.log(video.readyState);
+        if(video.readyState === video.HAVE_ENOUGH_DATA)
+        {
+            videoTex.needsUpdate = true;
+        }
         ffUi.render();
         fpUi.render();
     }
