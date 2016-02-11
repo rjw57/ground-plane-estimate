@@ -195,7 +195,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
     self.viewBounds = new THREE.Vector4(-0.5, 0.5, 0.5, -0.5);
     self.texture = null;
 
-    self.worldToImageMatrix = new THREE.Matrix3();
+    self.worldToImageMatrix = new THREE.Matrix4();
 
     var geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
     self.floorMaterial = new THREE.ShaderMaterial({
@@ -205,7 +205,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
             image: { type: 't', value: self.texture },
             textureSize: { type: 'v2', value: new THREE.Vector2(1, 1) },
             barrelPercent: { type: 'f', value: self.barrelPercent },
-            worldToImageMatrix: { type: 'm3', value: self.worldToImageMatrix },
+            worldToImageMatrix: { type: 'm4', value: self.worldToImageMatrix },
             viewBounds: { type: 'v4', value: self.viewBounds },
             floorRadius: { type: 'f', value: self.floorRadius },
         },
@@ -334,7 +334,7 @@ function FloorFindUI(containerElement) {
     self._vp1 = vp1;
     self._vp2 = vp2;
     self.imageToFloorMatrix = new THREE.Matrix3();
-    self.worldToImageMatrix = new THREE.Matrix3();
+    self.worldToImageMatrix = new THREE.Matrix4();
 
     function setFloorCamera() {
         // There's a new bounding box. Bounding boxes in JSXGraph are arrays
@@ -423,9 +423,10 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
     var Ainv = numeric.inv(A);
 
     self.worldToImageMatrix.set(
-        Ainv[0][0], Ainv[0][1], Ainv[0][2],
-        Ainv[1][0], Ainv[1][1], Ainv[1][2],
-        Ainv[2][0], Ainv[2][1], Ainv[2][2]
+        Ainv[0][0], Ainv[0][1], Ainv[0][2], 0,
+        Ainv[1][0], Ainv[1][1], Ainv[1][2], 0,
+        Ainv[2][0], Ainv[2][1], Ainv[2][2], 0,
+        0, 0, 0, 0
     );
 };
 

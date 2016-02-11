@@ -34,7 +34,7 @@ uniform sampler2D image;
 // Barrel/pincushion distortion coefficient.
 // See https://en.wikipedia.org/wiki/Distortion_(optics)
 uniform float barrelPercent;
-uniform mat3 worldToImageMatrix;
+uniform mat4 worldToImageMatrix;
 uniform float floorRadius;
 
 vec2 undistortImgToDistortImg(vec2 coord) {
@@ -63,7 +63,7 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 }
 
 void main() {
-    vec3 imgCoordHomog = worldToImageMatrix * vec3(floorCoord, 1.0);
+    vec4 imgCoordHomog = worldToImageMatrix * vec4(floorCoord, 1.0, 0.0);
     vec2 imgCoord = imgCoordHomog.xy / imgCoordHomog.z;
 
     // Correct distortion
