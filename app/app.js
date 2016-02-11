@@ -423,10 +423,10 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
     var Ainv = numeric.inv(A);
 
     self.worldToImageMatrix.set(
-        Ainv[0][0], Ainv[0][1], Ainv[0][2], 0,
-        Ainv[1][0], Ainv[1][1], Ainv[1][2], 0,
-        Ainv[2][0], Ainv[2][1], Ainv[2][2], 0,
-        0, 0, 0, 0
+        Ainv[0][0], Ainv[0][1], 0, Ainv[0][2],
+        Ainv[1][0], Ainv[1][1], 0, Ainv[1][2],
+        0, 0, 1, 0,
+        Ainv[2][0], Ainv[2][1], 0, Ainv[2][2]
     );
 };
 

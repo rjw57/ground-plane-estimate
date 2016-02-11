@@ -63,8 +63,8 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 }
 
 void main() {
-    vec4 imgCoordHomog = worldToImageMatrix * vec4(floorCoord, 1.0, 0.0);
-    vec2 imgCoord = imgCoordHomog.xy / imgCoordHomog.z;
+    vec4 imgCoordHomog = worldToImageMatrix * vec4(floorCoord, 0.0, 1.0);
+    vec2 imgCoord = imgCoordHomog.xy / imgCoordHomog.w;
 
     // Correct distortion
     vec2 texCoord = undistortImgToDistortImg(imgCoord) / textureSize;
@@ -73,7 +73,7 @@ void main() {
         length(floorCoord));
 
     // Clip to image
-    if((imgCoordHomog.z > 0.0) && (texCoord.x >= 0.0) && (texCoord.y >= 0.0)
+    if((imgCoordHomog.w > 0.0) && (texCoord.x >= 0.0) && (texCoord.y >= 0.0)
             && (texCoord.x < 1.0) && (texCoord.y < 1.0)) {
         gl_FragColor = alpha * texture2D(image, texCoord)
             + (1.0 - alpha) * vec4(0.0, 0.0, 0.0, 0.0);
