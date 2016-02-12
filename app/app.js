@@ -177,7 +177,7 @@ FloorPreviewUI.prototype.render = function() {
     this._floorRenderer.barrelPercent = this.propSource.barrelDistortion;
     this._floorRenderer.worldToCameraMatrix.copy(this.propSource.worldToCameraMatrix);
     this._floorRenderer.worldToImageMatrix.copy(this.propSource.worldToImageMatrix);
-    this._floorRenderer.projectionMatrix.copy(this.propSource.projectionMatrix);
+    this._floorRenderer.projectionToImageMatrix.copy(this.propSource.projectionToImageMatrix);
     this._floorRenderer.floorRadius = this.propSource.floorRadius;
     this._floorRenderer.texture = this.texture;
     this._floorRenderer.render();
@@ -199,7 +199,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
 
     self.worldToCameraMatrix = new THREE.Matrix4();
     self.worldToImageMatrix = new THREE.Matrix4();
-    self.projectionMatrix = new THREE.Matrix4();
+    self.projectionToImageMatrix = new THREE.Matrix4();
 
     var geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
     self.floorMaterial = new THREE.ShaderMaterial({
@@ -207,7 +207,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
         fragmentShader: document.getElementById('previewFragmentShader').textContent,
         uniforms: {
             worldToCameraMatrix: { type: 'm4', value: self.worldToCameraMatrix },
-            reconProjectionMatrix: { type: 'm4', value: self.projectionMatrix },
+            reconProjectionMatrix: { type: 'm4', value: self.projectionToImageMatrix },
             image: { type: 't', value: self.texture },
             textureSize: { type: 'v2', value: new THREE.Vector2(1, 1) },
             barrelPercent: { type: 'f', value: self.barrelPercent },
@@ -279,6 +279,7 @@ function FloorFindUI(containerElement) {
 
     var boardId = 'floor-ui-board-' + Math.random().toString(16).slice(2);
     var floorId = 'floor-ui-floor-' + Math.random().toString(16).slice(2);
+    var axisId = 'axis-ui-axis-' + Math.random().toString(16).slice(2);
 
     function createUIChild(id) {
         var childElement = document.createElement('div');
@@ -295,6 +296,7 @@ function FloorFindUI(containerElement) {
     // Now create the elements for the WebGL-rendered floor and the JSXGraph
     // board.
     var floorElement = createUIChild(floorId);
+    var axisElement = createUIChild(axisId);
     var boardElement = createUIChild(boardId);
 
     // Create the JSXGraph board
@@ -352,7 +354,38 @@ function FloorFindUI(containerElement) {
 
     self.worldToCameraMatrix = new THREE.Matrix4();
     self.worldToImageMatrix = new THREE.Matrix4();
+    self.projectionToImageMatrix = new THREE.Matrix4();
+    self.imageToViewportMatrix = new THREE.Matrix4();
     self.projectionMatrix = new THREE.Matrix4();
+
+    self.axisScene = new THREE.Scene();
+
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(1, 0, 0),
+        new THREE.Vector3(0, 0, 0),
+        1,
+        0xff0000
+    ));
+
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(0, 1, 0),
+        new THREE.Vector3(0, 0, 0),
+        1,
+        0x00ff00
+    ));
+
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(0, 0, 1),
+        new THREE.Vector3(0, 0, 0),
+        1,
+        0x0000ff
+    ));
+
+    self.axisCamera = new THREE.Camera({
+        matrixAutoUpdate: false, rotationAutoUpdate: false,
+    });
+    self.axisRenderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
+    axisElement.appendChild(self.axisRenderer.domElement);
 
     function setFloorCamera() {
         // There's a new bounding box. Bounding boxes in JSXGraph are arrays
@@ -362,11 +395,18 @@ function FloorFindUI(containerElement) {
         self._floorRenderer.camera.updateProjectionMatrix();
         self._floorRenderer.viewBounds.set(bbox[0], bbox[1], bbox[2], bbox[3]);
         self._floorRenderer.containerResized();
+
+        // Also update the image -> viewport matrix
+        self.imageToViewportMatrix.makeOrthographic(
+            bbox[0], bbox[2], bbox[1], bbox[3], 5, -5
+        );
     };
     self._board.on('boundingbox', setFloorCamera);
 
     self.updateProjectionMatrix();
     self._board.on('update', function() { self.updateProjectionMatrix(); });
+
+    self.containerResized();
 }
 
 FloorFindUI.prototype.containerResized = function() {
@@ -374,14 +414,43 @@ FloorFindUI.prototype.containerResized = function() {
     this._board.renderer.resize(elem.clientWidth, elem.clientHeight);
     this._board.setBoundingBox(this._board.getBoundingBox(), true);
     this._floorRenderer.containerResized();
+
+    this.axisRenderer.setSize(elem.clientWidth, elem.clientHeight);
 };
 
 FloorFindUI.prototype.render = function() {
+    var self = this;
+
     this._floorRenderer.floorOpacity = this.floorOpacity;
     this._floorRenderer.floorRadius = this.floorRadius;
     this._floorRenderer.barrelPercent = this.barrelDistortion;
     this._floorRenderer.texture = this.texture;
     this._floorRenderer.render();
+
+    this.projectionMatrix.multiplyMatrices(
+        this.imageToViewportMatrix, this.projectionToImageMatrix
+    );
+    //this.projectionMatrix.copy(this.imageToViewportMatrix);
+
+    var p = new THREE.Vector4(0, 0, 0, 1);
+    console.log('---');
+    p.applyMatrix4(this.worldToCameraMatrix);
+    p.applyMatrix4(this.projectionMatrix);
+    p.divideScalar(p.w);
+    console.log(p.clone());
+    console.log('===');
+
+    var matrixWorld = new THREE.Matrix4();
+    matrixWorld.getInverse(self.worldToCameraMatrix);
+
+    //self.axisCamera.matrixWorld.copy(matrixWorld);
+    //self.axisCamera.matrixWorldInverse.copy(self.worldToCameraMatrix);
+    //self.axisCamera.matrixWorldNeedsUpdate = false;
+    self.axisCamera.projectionMatrix.multiplyMatrices(
+        self.projectionMatrix, self.worldToCameraMatrix
+    );
+
+    self.axisRenderer.render(self.axisScene, self.axisCamera);
 };
 
 FloorFindUI.prototype.initialiseFromTexture = function() {
@@ -552,25 +621,11 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
 
     var P = numeric.dot(A, B);
 
-    self.worldToCameraMatrix.set(
-        R[0][0], R[0][1], R[0][2], t[0],
-        R[1][0], R[1][1], R[1][2], t[1],
-        R[2][0], R[2][1], R[2][2], t[2],
-        0, 0, 0, 1
-    );
-
-    self.projectionMatrix.set(
-        A[0][0], A[0][1], A[0][2], 0,
-        A[1][0], A[1][1], A[1][2], 0,
-        A[2][0], A[2][1], A[2][2], 0,
-        0, 0, 0, 1
-    );
-
     /*
     console.log('---');
+    console.log(numeric.prettyPrint(A));
     console.log(numeric.prettyPrint(R));
     console.log(numeric.prettyPrint(t));
-    console.log(numeric.prettyPrint(A));
     console.log(numeric.prettyPrint(B));
     console.log(numeric.prettyPrint(Pvec));
     console.log(numeric.prettyPrint(P));
@@ -583,18 +638,15 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         0, 0, 0, 1
     );
 
-    self.projectionMatrix.set(
+    self.projectionToImageMatrix.set(
         A[0][0], A[0][1], A[0][2], 0,
         A[1][0], A[1][1], A[1][2], 0,
         0, 0, 1, 0,
         A[2][0], A[2][1], A[2][2], 0
     );
 
-    self.worldToImageMatrix.set(
-        P[0][0], P[0][1], P[0][2], P[0][3],
-        P[1][0], P[1][1], P[1][2], P[1][3],
-        0, 0, 1, 0,
-        P[2][0], P[2][1], P[2][2], P[2][3]
+    self.worldToImageMatrix.multiplyMatrices(
+        self.projectionToImageMatrix, self.worldToCameraMatrix
     );
 };
 
