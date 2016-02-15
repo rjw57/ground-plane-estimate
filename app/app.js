@@ -341,7 +341,6 @@ function FloorFindUI(containerElement) {
     self._vp2 = vp2;
     self._floorVert = floorVert;
     self._refVert = refVert;
-    self.referenceHeight = 0.5;
     self.imageToFloorMatrix = new THREE.Matrix3();
     self.worldToImageMatrix = new THREE.Matrix4();
 
@@ -389,11 +388,6 @@ FloorFindUI.prototype.initialiseFromTexture = function() {
 FloorFindUI.prototype.updateProjectionMatrix = function() {
     var self = this;
 
-    // We want to map from our construction points to a full 3D model. First of
-    // all we will reconstruct the (invertable) projective mapping from our 4
-    // floor points, { A, B, C, D } to the world floor plane.
-
-    // Construct matrix of transformed floor points.
     var floorPoints = numeric.dot(
         self.getFloorPlaneTransform(),
         [
@@ -427,78 +421,20 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         H[3], H[4], H[5],
         H[6], H[7], 1.0
     );
-
-    // imageToFloorMatrix is a 3x3 invertable matrix which maps from the image
-    // plane to the floor plane.
     self.imageToFloorMatrix = self._floorRenderer.floorMatrix;
 
-    // The imageToFloorMatrix matrix is invertable.
     var A = [
         [H[0], H[1], H[2]],
         [H[3], H[4], H[5]],
         [H[6], H[7], 1.0],
     ];
-
-    // Use imageToFloorMatrix to map from the image plane "floor" vertex to the
-    // floor plane.
-    var floorVertWorld = numeric.dot(A,
-        [self._floorVert.X(), self._floorVert.Y(), 1]
-    );
-    for(i=0; i<3; i++) { floorVertWorld[i] /= floorVertWorld[2]; }
-
-    // We can now stack up our list of correspondences.
-    var worldPoints = [], imagePoints = [];
-
-    // Floor A, B, C, D
-    imagePoints.push([self._pA.X(), self._pA.Y()]);
-    worldPoints.push([floorPoints[0][0], floorPoints[1][0], 0]);
-    imagePoints.push([self._pB.X(), self._pB.Y()]);
-    worldPoints.push([floorPoints[0][1], floorPoints[1][1], 0]);
-    imagePoints.push([self._pC.X(), self._pC.Y()]);
-    worldPoints.push([floorPoints[0][2], floorPoints[1][2], 0]);
-    imagePoints.push([self._pD.X(), self._pD.Y()]);
-    worldPoints.push([floorPoints[0][3], floorPoints[1][3], 0]);
-
-    // Reference vertical
-    imagePoints.push([self._floorVert.X(), self._floorVert.Y()]);
-    worldPoints.push([floorVertWorld[0], floorVertWorld[1], 0]);
-    imagePoints.push([self._refVert.X(), self._refVert.Y()]);
-    worldPoints.push([floorVertWorld[0], floorVertWorld[1], self.referenceHeight]);
-
-    // Camera calibration taken from
-    // http://research.microsoft.com/en-us/um/people/zhang/Papers/Camera%20Calibration%20-%20book%20chapter.pdf
-
-    var G = [];
-    for(i=0; i<imagePoints.length; ++i) {
-        var I = imagePoints[i], W = worldPoints[i];
-        G.push([
-            W[0], W[1], W[2], 1, 0, 0, 0, 0, -I[0]*W[0], -I[0]*W[1], -I[0]*W[2], -I[0]
-        ]);
-        G.push([
-            0, 0, 0, 0, W[0], W[1], W[2], 1, -I[1]*W[0], -I[1]*W[1], -I[1]*W[2], -I[1]
-        ]);
-    }
-
-    // P is eigenvector of G^T G associated with smallest eigenvector
-    var GtG = numeric.dot(numeric.transpose(G), G);
-
-    var eigsol = numeric.eig(GtG);
-    var minidx = 0, minl = Math.abs(eigsol.lambda.x[0]);
-    for(i=0; i<eigsol.lambda.x.length; ++i) {
-        if(Math.abs(eigsol.lambda.x[i]) < minl) {
-            minidx = i; minl = Math.abs(eigsol.lambda.x[i]);
-        }
-    }
-    var Pvec = numeric.transpose(eigsol.E.x)[minidx];
-
-    // Norm s.t. p34 is +ve
-    for(i=0; i<Pvec.length; i++) { Pvec[i] /= Math.sign(Pvec[11]); }
+    var Ainv = numeric.inv(A);
 
     self.worldToImageMatrix.set(
-        Pvec[0], Pvec[1], Pvec[2], Pvec[3],
-        Pvec[4], Pvec[5], Pvec[6], Pvec[7],
+        Ainv[0][0], Ainv[0][1], 0, Ainv[0][2],
+        Ainv[1][0], Ainv[1][1], 0, Ainv[1][2],
         0, 0, 1, 0,
-        Pvec[8], Pvec[9], Pvec[10], Pvec[11]
+        Ainv[2][0], Ainv[2][1], 0, Ainv[2][2]
     );
 };
 
