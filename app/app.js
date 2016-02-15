@@ -327,20 +327,12 @@ function FloorFindUI(containerElement) {
     var pC = self._board.create('intersection', [l22, l11],
         { name: 'C', fixed: true, highlight: false });
 
-    var floorVert = self._board.create('point', [w*0.5, h*0.5], { name: 'Floor' });
-    var refVert = self._board.create('point', [w*0.5, h*0.75], { name: 'Ref' });
-
-    var vertical = self._board.create('line', [floorVert, refVert],
-        { name: 'Vertical', straightFirst: false, straightLast: false });
-
     self._pA = pA;
     self._pB = pB;
     self._pC = pC;
     self._pD = pD;
     self._vp1 = vp1;
     self._vp2 = vp2;
-    self._floorVert = floorVert;
-    self._refVert = refVert;
     self.imageToFloorMatrix = new THREE.Matrix3();
     self.worldToImageMatrix = new THREE.Matrix4();
 
