@@ -175,9 +175,7 @@ FloorPreviewUI.prototype.render = function() {
     this._floorRenderer.containerResized();
 
     this._floorRenderer.barrelPercent = this.propSource.barrelDistortion;
-    this._floorRenderer.worldToCameraMatrix.copy(this.propSource.worldToCameraMatrix);
     this._floorRenderer.worldToImageMatrix.copy(this.propSource.worldToImageMatrix);
-    this._floorRenderer.projectionMatrix.copy(this.propSource.projectionMatrix);
     this._floorRenderer.floorRadius = this.propSource.floorRadius;
     this._floorRenderer.texture = this.texture;
     this._floorRenderer.render();
@@ -197,9 +195,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
     self.viewBounds = new THREE.Vector4(-0.5, 0.5, 0.5, -0.5);
     self.texture = null;
 
-    self.worldToCameraMatrix = new THREE.Matrix4();
     self.worldToImageMatrix = new THREE.Matrix4();
-    self.projectionMatrix = new THREE.Matrix4();
 
     var geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
     self.floorMaterial = new THREE.ShaderMaterial({
@@ -210,8 +206,6 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
             textureSize: { type: 'v2', value: new THREE.Vector2(1, 1) },
             barrelPercent: { type: 'f', value: self.barrelPercent },
             worldToImageMatrix: { type: 'm4', value: self.worldToImageMatrix },
-            //worldToCameraMatrix: { type: 'm4', value: self.worldToCameraMatrix },
-            //projectionMatrix: { type: 'm4', value: self.projectionMatrix },
             viewBounds: { type: 'v4', value: self.viewBounds },
             floorRadius: { type: 'f', value: self.floorRadius },
         },
@@ -349,10 +343,7 @@ function FloorFindUI(containerElement) {
     self._refVert = refVert;
     self.referenceHeight = 0.5;
     self.imageToFloorMatrix = new THREE.Matrix3();
-
-    self.worldToCameraMatrix = new THREE.Matrix4();
     self.worldToImageMatrix = new THREE.Matrix4();
-    self.projectionMatrix = new THREE.Matrix4();
 
     function setFloorCamera() {
         // There's a new bounding box. Bounding boxes in JSXGraph are arrays
@@ -396,7 +387,7 @@ FloorFindUI.prototype.initialiseFromTexture = function() {
 };
 
 FloorFindUI.prototype.updateProjectionMatrix = function() {
-    var self = this, i, j, A, Ainv;
+    var self = this;
 
     // We want to map from our construction points to a full 3D model. First of
     // all we will reconstruct the (invertable) projective mapping from our 4
@@ -412,9 +403,9 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         ]
     );
 
-    for(i=0; i<4; ++i) {
+    for(var i=0; i<4; ++i) {
         var w = floorPoints[2][i];
-        for(j=0; j<3; ++j) {
+        for(var j=0; j<3; ++j) {
             floorPoints[j][i] /= w;
         }
     }
@@ -442,7 +433,7 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
     self.imageToFloorMatrix = self._floorRenderer.floorMatrix;
 
     // The imageToFloorMatrix matrix is invertable.
-    A = [
+    var A = [
         [H[0], H[1], H[2]],
         [H[3], H[4], H[5]],
         [H[6], H[7], 1.0],
@@ -476,7 +467,6 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
 
     // Camera calibration taken from
     // http://research.microsoft.com/en-us/um/people/zhang/Papers/Camera%20Calibration%20-%20book%20chapter.pdf
-    // (with sign errors corrected...)
 
     var G = [];
     for(i=0; i<imagePoints.length; ++i) {
@@ -501,67 +491,8 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
     }
     var Pvec = numeric.transpose(eigsol.E.x)[minidx];
 
-    // Normalise P
-    Pvec = numeric.div(Pvec, Math.sqrt(Pvec[8]*Pvec[8] + Pvec[9]*Pvec[9] + Pvec[10]*Pvec[10]));
-    Pvec = numeric.mul(Pvec, Math.sign(Pvec[11]));
-
-    // Extract projection matrix (A), rotation (R) and translation (t) such that
-    // P = A[R t]. Let B = AR, b = At.
-
-    var B = [
-        [Pvec[0], Pvec[1], Pvec[2]],
-        [Pvec[4], Pvec[5], Pvec[6]],
-        [Pvec[8], Pvec[9], Pvec[10]]
-    ];
-
-    var b = [Pvec[3], Pvec[7], Pvec[11]];
-
-    // Construct and normalise K = BB^T = AA^T
-    var K = numeric.dot(B, numeric.transpose(B));
-    var norm = K[2][2];
-
-    K = numeric.div(K, norm);
-    B = numeric.div(B, norm);
-    b = numeric.div(b, norm);
-
-    // Closed form solution for A
-    var u_0 = K[0][2], v_0 = K[1][2], k_u = K[0][0], k_c = K[0][1], k_v = K[1][1];
-
-    // Check for no solution
-    if(v_0*v_0 > k_v) { return; }
-    var beta = Math.sqrt(k_v - v_0*v_0);
-    var gamma = (k_c - u_0*v_0) / beta;
-
-    if(u_0*u_0 + gamma*gamma > k_u) { return; }
-    var alpha = Math.sqrt(k_u - u_0*u_0 - gamma*gamma);
-
-    A = [
-        [alpha, gamma, u_0],
-        [0, beta, v_0],
-        [0, 0, 1],
-    ];
-    Ainv = numeric.inv(A);
-
-    var R = numeric.dot(Ainv, B), t = numeric.dot(Ainv, b);
-
-    console.log('---');
-    console.log(R);
-    console.log(t);
-    console.log(A);
-
-    self.worldToCameraMatrix.set(
-        R[0][0], R[0][1], R[0][2], t[0],
-        R[1][0], R[1][1], R[1][2], t[1],
-        R[2][0], R[2][1], R[2][2], t[2],
-        0, 0, 0, 1
-    );
-
-    self.projectionMatrix.set(
-        A[0][0], A[0][1], A[0][2], 0,
-        A[1][0], A[1][1], A[1][2], 0,
-        A[2][0], A[2][1], A[2][2], 0,
-        0, 0, 0, 1
-    );
+    // Norm s.t. p34 is +ve
+    for(i=0; i<Pvec.length; i++) { Pvec[i] /= Math.sign(Pvec[11]); }
 
     self.worldToImageMatrix.set(
         Pvec[0], Pvec[1], Pvec[2], Pvec[3],
