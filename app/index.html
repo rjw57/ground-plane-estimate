@@ -35,8 +35,6 @@ uniform sampler2D image;
 // See https://en.wikipedia.org/wiki/Distortion_(optics)
 uniform float barrelPercent;
 uniform mat4 worldToImageMatrix;
-uniform mat4 worldToCameraMatrix;
-uniform mat4 reconProjectionMatrix;
 uniform float floorRadius;
 
 vec2 undistortImgToDistortImg(vec2 coord) {
@@ -65,8 +63,7 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 }
 
 void main() {
-    //vec4 imgCoordHomog = worldToImageMatrix * vec4(floorCoord, 0.0, 1.0);
-    vec4 imgCoordHomog = reconProjectionMatrix * worldToCameraMatrix * vec4(floorCoord, 0.0, 1.0);
+    vec4 imgCoordHomog = worldToImageMatrix * vec4(floorCoord, 0.0, 1.0);
     vec2 imgCoord = imgCoordHomog.xy / imgCoordHomog.w;
 
     // Correct distortion

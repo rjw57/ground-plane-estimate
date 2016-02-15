@@ -206,12 +206,12 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
         vertexShader: document.getElementById('previewVertexShader').textContent,
         fragmentShader: document.getElementById('previewFragmentShader').textContent,
         uniforms: {
-            worldToCameraMatrix: { type: 'm4', value: self.worldToCameraMatrix },
-            reconProjectionMatrix: { type: 'm4', value: self.projectionMatrix },
             image: { type: 't', value: self.texture },
             textureSize: { type: 'v2', value: new THREE.Vector2(1, 1) },
             barrelPercent: { type: 'f', value: self.barrelPercent },
             worldToImageMatrix: { type: 'm4', value: self.worldToImageMatrix },
+            //worldToCameraMatrix: { type: 'm4', value: self.worldToCameraMatrix },
+            //projectionMatrix: { type: 'm4', value: self.projectionMatrix },
             viewBounds: { type: 'v4', value: self.viewBounds },
             floorRadius: { type: 'f', value: self.floorRadius },
         },
@@ -544,13 +544,10 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
 
     var R = numeric.dot(Ainv, B), t = numeric.dot(Ainv, b);
 
-    B = [
-        [R[0][0], R[0][1], R[0][2], t[0]],
-        [R[1][0], R[1][1], R[1][2], t[1]],
-        [R[2][0], R[2][1], R[2][2], t[2]],
-    ];
-
-    var P = numeric.dot(A, B);
+    console.log('---');
+    console.log(R);
+    console.log(t);
+    console.log(A);
 
     self.worldToCameraMatrix.set(
         R[0][0], R[0][1], R[0][2], t[0],
@@ -566,35 +563,11 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         0, 0, 0, 1
     );
 
-    /*
-    console.log('---');
-    console.log(numeric.prettyPrint(R));
-    console.log(numeric.prettyPrint(t));
-    console.log(numeric.prettyPrint(A));
-    console.log(numeric.prettyPrint(B));
-    console.log(numeric.prettyPrint(Pvec));
-    console.log(numeric.prettyPrint(P));
-    */
-
-    self.worldToCameraMatrix.set(
-        B[0][0], B[0][1], B[0][2], B[0][3],
-        B[1][0], B[1][1], B[1][2], B[1][3],
-        B[2][0], B[2][1], B[2][2], B[2][3],
-        0, 0, 0, 1
-    );
-
-    self.projectionMatrix.set(
-        A[0][0], A[0][1], A[0][2], 0,
-        A[1][0], A[1][1], A[1][2], 0,
-        0, 0, 1, 0,
-        A[2][0], A[2][1], A[2][2], 0
-    );
-
     self.worldToImageMatrix.set(
-        P[0][0], P[0][1], P[0][2], P[0][3],
-        P[1][0], P[1][1], P[1][2], P[1][3],
+        Pvec[0], Pvec[1], Pvec[2], Pvec[3],
+        Pvec[4], Pvec[5], Pvec[6], Pvec[7],
         0, 0, 1, 0,
-        P[2][0], P[2][1], P[2][2], P[2][3]
+        Pvec[8], Pvec[9], Pvec[10], Pvec[11]
     );
 };
 
