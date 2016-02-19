@@ -3,7 +3,7 @@
 // Entry point to application. Called after all functions and variables below
 // have been initialised.
 function main() {
-    var imgUrl = 'trumpington.png', vidUrl = 'foo.mp4';
+    var imgUrl = 'trumpington.png', vidUrl = 'event-01-view-02.mp4';
     //, vidUrl = 'http://spica.eng.cam.ac.uk:8081/synchronised/cambridge-engineering-traffic-seq1-view1.mp4';
 
     Split(['#floor-pane', '#image-pane'], {
@@ -20,7 +20,7 @@ function main() {
     video.width = 1920;
     video.height = 1080;
     video.src = vidUrl;
-    video.autoplay = true;
+    video.autoplay = false;
     video.loop = true;
     //video.load();
     //video.play();
@@ -72,7 +72,7 @@ function main() {
     var state = {
         xScale: 1, yScale: 1,
         xOffset: 0, yOffset: 0,
-        theta: 0,
+        theta: 0, isPaused: true,
     };
 
     function updateFloorTransform() {
@@ -103,6 +103,15 @@ function main() {
         );
     }
 
+    function updatePlayPause() {
+        var s = state;
+        if(s.isPaused) {
+            video.pause();
+        } else {
+            video.play();
+        }
+    }
+
     // Create parameter GUI
     var gui = new dat.GUI();
     gui.add(ffUi, 'floorOpacity', 0.0, 1.0);
@@ -113,11 +122,12 @@ function main() {
     gui.add(state, 'xOffset', -10, 10).onChange(updateFloorTransform);
     gui.add(state, 'yOffset', -10, 10).onChange(updateFloorTransform);
     gui.add(state, 'theta', -200, 200).onChange(updateFloorTransform);
+    gui.add(state, 'isPaused').onChange(updatePlayPause);
     gui.add(actions, 'download');
 
     function render() {
         window.requestAnimationFrame(render);
-        console.log(video.readyState);
+        //console.log(video.readyState);
         if(video.readyState === video.HAVE_ENOUGH_DATA)
         {
             videoTex.needsUpdate = true;
