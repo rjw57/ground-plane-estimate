@@ -40,12 +40,7 @@ function main() {
             for(var i=0; i<9; ++i) {
                 columnMajorImageToFloorMatrix[i] = ffUi.imageToFloorMatrix.elements[i];
             }
-            var str = JSON.stringify({
-                columnMajorImageToFloorMatrix: columnMajorImageToFloorMatrix,
-                barrelCorrection: {
-                    K1: ffUi.barrelDistortion * 1e-2,
-                },
-            });
+            var str = ffUi.toJSON();
             var data = new Blob([str], {type:'application/json'});
             saveAs(data, 'calibration.json');
         },
@@ -95,6 +90,8 @@ function main() {
     gui.add(state, 'xOffset', -10, 10).onChange(updateFloorTransform);
     gui.add(state, 'yOffset', -10, 10).onChange(updateFloorTransform);
     gui.add(state, 'theta', -200, 200).onChange(updateFloorTransform);
+    gui.add(ffUi, 'referenceHeight1', 0, 1).onChange(updateFloorTransform);
+    gui.add(ffUi, 'referenceHeight2', 0, 1).onChange(updateFloorTransform);
     gui.add(actions, 'download');
 
     function render() {
@@ -252,6 +249,7 @@ function FloorFindUI(containerElement) {
     self.floorOpacity = 0.25;
     self.floorRadius = 20.0;
     self.barrelDistortion = 0;
+    self._projectionMatrix = [];
 
     // Affine transform to apply to floor plane.
     var floorPlaneTransform = numeric.identity(3);
@@ -338,8 +336,8 @@ function FloorFindUI(containerElement) {
     self._refVert2Floor = self._board.create('point', [w*0.75, h*0.25], { name: 'Floor' });
     self._refVert1 = self._board.create('point', [w*0.25, h*0.75], { name: 'Vertical' });
     self._refVert2 = self._board.create('point', [w*0.75, h*0.75], { name: 'Vertical' });
-    self.reverenceHeight1 = 0.5;
-    self.reverenceHeight2 = 0.5;
+    self.referenceHeight1 = 0.4;
+    self.referenceHeight2 = 0.4;
 
     self._board.create('line', [self._refVert1Floor, self._refVert1], {
         straightFirst: false, straightLast: false
@@ -365,6 +363,32 @@ function FloorFindUI(containerElement) {
     self.updateProjectionMatrix();
     self._board.on('update', function() { self.updateProjectionMatrix(); });
 }
+
+FloorFindUI.prototype.toJSON = function() {
+    return JSON.stringify({
+        controlPoints: {
+            A: [ this._pA.X(), this._pA.Y() ],
+            B: [ this._pA.X(), this._pA.Y() ],
+            C: [ this._pA.X(), this._pA.Y() ],
+            D: [ this._pA.X(), this._pA.Y() ],
+            VP1: [ this._vp1.X(), this._vp1.Y() ],
+            VP2: [ this._vp2.X(), this._vp2.Y() ],
+            Vert1Floor: [ this._refVert1Floor.X(), this._refVert1Floor.Y() ],
+            Vert2Floor: [ this._refVert2Floor.X(), this._refVert2Floor.Y() ],
+            Vert1Top: [ this._refVert1.X(), this._refVert1.Y() ],
+            Vert2Top: [ this._refVert2.X(), this._refVert2.Y() ],
+        },
+        controlValues: {
+            referenceHeight1: this.referenceHeight1,
+            referenceHeight2: this.referenceHeight2,
+        },
+        pointCorrespondences: this.pointCorrespondences(),
+        projectionMatrix: this._projectionMatrix,
+        barrelCorrection: {
+            K1: this.barrelDistortion * 1e-2,
+        },
+    });
+};
 
 FloorFindUI.prototype.containerResized = function() {
     var elem = this.containerElement;
@@ -392,7 +416,7 @@ FloorFindUI.prototype.initialiseFromTexture = function() {
     self._board.update();
 };
 
-FloorFindUI.prototype.updateProjectionMatrix = function() {
+FloorFindUI.prototype.pointCorrespondences = function() {
     var self = this;
 
     // Firstly compute the image-space to floor plane matrix:
@@ -456,12 +480,21 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
     imagePoints.push([self._refVert1Floor.X(), self._refVert1Floor.Y()]);
     imagePoints.push([self._refVert1.X(), self._refVert1.Y()]);
     worldPoints.push([refVert1Floor[0], refVert1Floor[1], 0]);
-    worldPoints.push([refVert1Floor[0], refVert1Floor[1], self.reverenceHeight1]);
+    worldPoints.push([refVert1Floor[0], refVert1Floor[1], self.referenceHeight1]);
 
     imagePoints.push([self._refVert2Floor.X(), self._refVert2Floor.Y()]);
     imagePoints.push([self._refVert2.X(), self._refVert2.Y()]);
     worldPoints.push([refVert2Floor[0], refVert2Floor[1], 0]);
-    worldPoints.push([refVert2Floor[0], refVert2Floor[1], self.reverenceHeight1]);
+    worldPoints.push([refVert2Floor[0], refVert2Floor[1], self.referenceHeight1]);
+
+    return { image: imagePoints, world: worldPoints };
+}
+
+FloorFindUI.prototype.updateProjectionMatrix = function() {
+    var self = this;
+    var correspondences = self.pointCorrespondences();
+
+    var imagePoints = correspondences.image, worldPoints = correspondences.world;
 
     // We can now form the camera calibration problem as outlined in
     // http://research.microsoft.com/en-us/um/people/zhang/Papers/Camera%20Calibration%20-%20book%20chapter.pdf
@@ -501,26 +534,6 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         [Pvec[8], Pvec[9], Pvec[10], Pvec[11]]
     ];
 
-    console.log('P:\n' + numeric.prettyPrint(P));
-
-    // Uncomment to test
-    /*
-    var W = [], Ig = [];
-    for(i=0; i<worldPoints.length; ++i) {
-        var X = worldPoints[i], x = imagePoints[i];
-        W.push([
-            X[0], X[1], X[2], 1
-        ]);
-        Ig.push(x);
-    }
-    W = numeric.transpose(W);
-
-    var I = numeric.transpose(numeric.dot(P, W));
-    for(i=0; i<imagePoints.length; i++) {
-        console.log(imagePoints[i], 'vs', numeric.div(I[i], I[i][2]));
-    }
-    */
-
     // Form subset of matrix P which acts on world co-ordinate == 0
     var floorToImage = [
         [P[0][0], P[0][1], P[0][3]],
@@ -543,6 +556,7 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         P[2][0], P[2][1], P[2][2], P[2][3]
     );
     self._floorRenderer.worldToImageMatrix.copy(self.worldToImageMatrix);
+    self._projectionMatrix = P;
 };
 
 // Create ThreeJS context for rendering floor.
