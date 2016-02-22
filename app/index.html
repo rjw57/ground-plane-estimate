@@ -155,11 +155,11 @@ void main() {
 // #extension GL_OES_standard_derivatives : enable
 
 varying vec2 imgCoord;
-uniform mat3 floorMatrix;
+uniform mat3 imageToFloorMatrix;
 uniform float floorOpacity, floorRadius;
 
 void main() {
-    vec3 floorCoordHomog = floorMatrix * vec3(imgCoord, 1.0);
+    vec3 floorCoordHomog = imageToFloorMatrix * vec3(imgCoord, 1.0);
     if(floorCoordHomog.z <= 0.0) {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
     } else {

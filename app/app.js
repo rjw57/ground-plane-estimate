@@ -189,7 +189,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
     self.scene = new THREE.Scene();
     self.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 2);
     self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
-    self.floorMatrix = new THREE.Matrix3();
+    self.imageToFloorMatrix = new THREE.Matrix3();
     self.floorRadius = 15;
     self.barrelPercent = 0.0;
     self.viewBounds = new THREE.Vector4(-0.5, 0.5, 0.5, -0.5);
@@ -408,12 +408,12 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         { x: floorPoints[0][3], y: floorPoints[1][3] },
     ]);
 
-    self._floorRenderer.floorMatrix.set(
+    self._floorRenderer.imageToFloorMatrix.set(
         H[0], H[1], H[2],
         H[3], H[4], H[5],
         H[6], H[7], 1.0
     );
-    self.imageToFloorMatrix = self._floorRenderer.floorMatrix;
+    self.imageToFloorMatrix = self._floorRenderer.imageToFloorMatrix;
 
     var A = [
         [H[0], H[1], H[2]],
@@ -438,7 +438,7 @@ function FloorRenderer(containerElement, textureUrl) {
     self.scene = new THREE.Scene();
     self.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 2);
     self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
-    self.floorMatrix = new THREE.Matrix3();
+    self.imageToFloorMatrix = new THREE.Matrix3();
     self.floorOpacity = 0.25;
     self.floorRadius = 15;
     self.barrelPercent = 0.0;
@@ -467,7 +467,7 @@ function FloorRenderer(containerElement, textureUrl) {
         fragmentShader: document.getElementById('floorFragmentShader').textContent,
         uniforms: {
             viewBounds: { type: 'v4', value: self.viewBounds },
-            floorMatrix: { type: 'm3', value: self.floorMatrix },
+            imageToFloorMatrix: { type: 'm3', value: self.imageToFloorMatrix },
             floorOpacity: { type: 'f', value: self.floorOpacity },
             floorRadius: { type: 'f', value: self.floorRadius },
         },
@@ -492,7 +492,7 @@ FloorRenderer.prototype.render = function() {
     var uniforms;
 
     uniforms = this.floorMaterial.uniforms;
-    uniforms.floorMatrix.value = this.floorMatrix;
+    uniforms.imageToFloorMatrix.value = this.imageToFloorMatrix;
     uniforms.floorOpacity.value = this.floorOpacity;
     uniforms.floorRadius.value = this.floorRadius;
 
