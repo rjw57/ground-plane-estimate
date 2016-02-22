@@ -435,7 +435,7 @@ function FloorRenderer(containerElement, textureUrl) {
     var self = this;
 
     self.containerElement = containerElement;
-    self.scene = new THREE.Scene();
+    self.floorScene = new THREE.Scene();
     self.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 2);
     self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
     self.imageToFloorMatrix = new THREE.Matrix3();
@@ -460,7 +460,7 @@ function FloorRenderer(containerElement, textureUrl) {
     });
 
     var img = new THREE.Mesh(geometry, self.imageMaterial);
-    self.scene.add(img);
+    self.floorScene.add(img);
 
     self.floorMaterial = new THREE.ShaderMaterial({
         vertexShader: document.getElementById('floorVertexShader').textContent,
@@ -475,7 +475,7 @@ function FloorRenderer(containerElement, textureUrl) {
     });
 
     var floor = new THREE.Mesh(geometry, self.floorMaterial);
-    self.scene.add(floor);
+    self.floorScene.add(floor);
 
     self.camera.position.z = 1;
     self.containerElement.appendChild(self.renderer.domElement);
@@ -505,7 +505,7 @@ FloorRenderer.prototype.render = function() {
         uniforms.textureSize.value.set(w, h);
     }
 
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.floorScene, this.camera);
 }
 
 // Compute 3x3 matrix H which maps image-plane to floor-plane homogenous
