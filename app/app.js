@@ -333,6 +333,21 @@ function FloorFindUI(containerElement) {
     self._pD = pD;
     self._vp1 = vp1;
     self._vp2 = vp2;
+
+    self._refVert1Floor = self._board.create('point', [w*0.25, h*0.25], { name: 'Floor' });
+    self._refVert2Floor = self._board.create('point', [w*0.75, h*0.25], { name: 'Floor' });
+    self._refVert1 = self._board.create('point', [w*0.25, h*0.75], { name: 'Vertical' });
+    self._refVert2 = self._board.create('point', [w*0.75, h*0.75], { name: 'Vertical' });
+    self.reverenceHeight1 = 0.5;
+    self.reverenceHeight2 = 0.5;
+
+    self._board.create('line', [self._refVert1Floor, self._refVert1], {
+        straightFirst: false, straightLast: false
+    });
+    self._board.create('line', [self._refVert2Floor, self._refVert2], {
+        straightFirst: false, straightLast: false
+    });
+
     self.imageToFloorMatrix = new THREE.Matrix3();
     self.worldToImageMatrix = new THREE.Matrix4();
 
@@ -380,6 +395,8 @@ FloorFindUI.prototype.initialiseFromTexture = function() {
 FloorFindUI.prototype.updateProjectionMatrix = function() {
     var self = this;
 
+    // Firstly compute the image-space to floor plane matrix:
+
     var floorPoints = numeric.dot(
         self.getFloorPlaneTransform(),
         [
@@ -408,25 +425,124 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         { x: floorPoints[0][3], y: floorPoints[1][3] },
     ]);
 
+    var imageToFloor = [
+        [H[0], H[1], H[2]],
+        [H[3], H[4], H[5]],
+        [H[6], H[7], 1.0]
+    ];
+
+    // Use the image to floor matrix to compute the floor-plane co-ordinates of
+    // the reference verticals.
+    var refVert1Floor = numeric.dot(imageToFloor, [
+        self._refVert1Floor.X(), self._refVert1Floor.Y(), 1
+    ]);
+    refVert1Floor = numeric.div(refVert1Floor, refVert1Floor[2]);
+
+    var refVert2Floor = numeric.dot(imageToFloor, [
+        self._refVert2Floor.X(), self._refVert2Floor.Y(), 1
+    ]);
+    refVert2Floor = numeric.div(refVert2Floor, refVert2Floor[2]);
+
+    // We can now compute a list of image-space and world-space correspondences.
+    var imagePoints = [], worldPoints = [];
+    imagePoints.push([self._pA.X(), self._pA.Y()]);
+    imagePoints.push([self._pB.X(), self._pB.Y()]);
+    imagePoints.push([self._pC.X(), self._pC.Y()]);
+    imagePoints.push([self._pD.X(), self._pD.Y()]);
+    for(var i=0; i<4; ++i) {
+        worldPoints.push([floorPoints[0][i], floorPoints[1][i], 0]);
+    }
+
+    imagePoints.push([self._refVert1Floor.X(), self._refVert1Floor.Y()]);
+    imagePoints.push([self._refVert1.X(), self._refVert1.Y()]);
+    worldPoints.push([refVert1Floor[0], refVert1Floor[1], 0]);
+    worldPoints.push([refVert1Floor[0], refVert1Floor[1], self.reverenceHeight1]);
+
+    imagePoints.push([self._refVert2Floor.X(), self._refVert2Floor.Y()]);
+    imagePoints.push([self._refVert2.X(), self._refVert2.Y()]);
+    worldPoints.push([refVert2Floor[0], refVert2Floor[1], 0]);
+    worldPoints.push([refVert2Floor[0], refVert2Floor[1], self.reverenceHeight1]);
+
+    // We can now form the camera calibration problem as outlined in
+    // http://research.microsoft.com/en-us/um/people/zhang/Papers/Camera%20Calibration%20-%20book%20chapter.pdf
+    // (With sign errors corrected)
+
+    var G = [];
+    for(i=0; i<imagePoints.length; ++i) {
+        var X = worldPoints[i], x = imagePoints[i];
+        G.push([
+            X[0], X[1], X[2], 1, 0, 0, 0, 0, -x[0]*X[0], -x[0]*X[1], -x[0]*X[2], -x[0]
+        ]);
+        G.push([
+            0, 0, 0, 0, X[0], X[1], X[2], 1, -x[1]*X[0], -x[1]*X[1], -x[1]*X[2], -x[1]
+        ]);
+    }
+
+    var GtG = numeric.dot(numeric.transpose(G), G);
+    var eigsol = numeric.eig(GtG);
+    var absLambda = eigsol.lambda.abs().x;
+    var minidx = 0, minval = absLambda[0];
+    for(i=0; i<absLambda.length; ++i) {
+        if(absLambda[i] < minval) {
+            minidx = i; minval = absLambda[i];
+        }
+    }
+
+    // Projection matrix coefficients are eigenvector with minimum eigenvalue:
+    var Pvec = numeric.transpose(eigsol.E.x)[minidx];
+
+    // Normalise s.t. p31^2 + p32^2 + p33^2 = 1 and p34 +ve
+    Pvec = numeric.div(Pvec, Math.sqrt(Pvec[8]*Pvec[8] + Pvec[9]*Pvec[9] + Pvec[10]*Pvec[10]));
+    Pvec = numeric.mul(Pvec, Math.sign(Pvec[11]));
+
+    var P = [
+        [Pvec[0], Pvec[1], Pvec[2], Pvec[3]],
+        [Pvec[4], Pvec[5], Pvec[6], Pvec[7]],
+        [Pvec[8], Pvec[9], Pvec[10], Pvec[11]]
+    ];
+
+    console.log('P:\n' + numeric.prettyPrint(P));
+
+    // Uncomment to test
+    /*
+
+    var W = [], Ig = [];
+    for(i=0; i<worldPoints.length; ++i) {
+        var X = worldPoints[i], x = imagePoints[i];
+        W.push([
+            X[0], X[1], X[2], 1
+        ]);
+        Ig.push(x);
+    }
+    W = numeric.transpose(W);
+
+    var I = numeric.transpose(numeric.dot(P, W));
+    for(i=0; i<imagePoints.length; i++) {
+        console.log(imagePoints[i], 'vs', numeric.div(I[i], I[i][2]));
+    }
+    */
+
+
+    // Form subset of matrix P which acts on world co-ordinate == 0
+    var floorToImage = [
+        [P[0][0], P[0][1], P[0][3]],
+        [P[1][0], P[1][1], P[1][3]],
+        [P[2][0], P[2][1], P[2][3]],
+    ];
+    var imageToFloor = numeric.inv(floorToImage);
+
     self._floorRenderer.imageToFloorMatrix.set(
-        H[0], H[1], H[2],
-        H[3], H[4], H[5],
-        H[6], H[7], 1.0
+        imageToFloor[0][0], imageToFloor[0][1], imageToFloor[0][2],
+        imageToFloor[1][0], imageToFloor[1][1], imageToFloor[1][2],
+        imageToFloor[2][0], imageToFloor[2][1], imageToFloor[2][2]
     );
     self.imageToFloorMatrix = self._floorRenderer.imageToFloorMatrix;
 
-    var A = [
-        [H[0], H[1], H[2]],
-        [H[3], H[4], H[5]],
-        [H[6], H[7], 1.0],
-    ];
-    var Ainv = numeric.inv(A);
-
     self.worldToImageMatrix.set(
-        Ainv[0][0], Ainv[0][1], 0, Ainv[0][2],
-        Ainv[1][0], Ainv[1][1], 0, Ainv[1][2],
+        P[0][0], P[0][1], P[0][2], P[0][3],
+        P[1][0], P[1][1], P[1][2], P[1][3],
         0, 0, 1, 0,
-        Ainv[2][0], Ainv[2][1], 0, Ainv[2][2]
+        P[2][0], P[2][1], P[2][2], P[2][3]
     );
 };
 
