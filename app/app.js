@@ -477,6 +477,23 @@ function FloorRenderer(containerElement, textureUrl) {
     var floor = new THREE.Mesh(geometry, self.floorMaterial);
     self.floorScene.add(floor);
 
+    self.axisScene = new THREE.Scene();
+    self.axisCamera = new THREE.PerspectiveCamera(90, 1, 1, 10000);
+    self.axisCamera.position.z = 5;
+
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0),
+        1, 0xff0000, 0.2, 0.1
+    ));
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0),
+        1, 0x00ff00, 0.2, 0.1
+    ));
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0),
+        1, 0x0000ff, 0.2, 0.1
+    ));
+
     self.camera.position.z = 1;
     self.containerElement.appendChild(self.renderer.domElement);
 
@@ -505,7 +522,9 @@ FloorRenderer.prototype.render = function() {
         uniforms.textureSize.value.set(w, h);
     }
 
+    this.renderer.autoClearColor = false;
     this.renderer.render(this.floorScene, this.camera);
+    this.renderer.render(this.axisScene, this.axisCamera);
 }
 
 // Compute 3x3 matrix H which maps image-plane to floor-plane homogenous
