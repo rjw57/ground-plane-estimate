@@ -175,7 +175,7 @@ FloorPreviewUI.prototype.render = function() {
     this._floorRenderer.containerResized();
 
     this._floorRenderer.barrelPercent = this.propSource.barrelDistortion;
-    this._floorRenderer.floorToImageMatrix.copy(this.propSource.floorToImageMatrix);
+    this._floorRenderer.worldToImageMatrix.copy(this.propSource.worldToImageMatrix);
     this._floorRenderer.floorRadius = this.propSource.floorRadius;
     this._floorRenderer.texture = this.texture;
     this._floorRenderer.render();
@@ -189,13 +189,13 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
     self.scene = new THREE.Scene();
     self.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 2);
     self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
-    self.floorMatrix = new THREE.Matrix3();
+    self.imageToFloorMatrix = new THREE.Matrix3();
     self.floorRadius = 15;
     self.barrelPercent = 0.0;
     self.viewBounds = new THREE.Vector4(-0.5, 0.5, 0.5, -0.5);
     self.texture = null;
 
-    self.floorToImageMatrix = new THREE.Matrix3();
+    self.worldToImageMatrix = new THREE.Matrix4();
 
     var geometry = new THREE.PlaneGeometry(1, 1, 1, 1);
     self.floorMaterial = new THREE.ShaderMaterial({
@@ -205,7 +205,7 @@ function FloorPreviewRenderer(containerElement, textureUrl) {
             image: { type: 't', value: self.texture },
             textureSize: { type: 'v2', value: new THREE.Vector2(1, 1) },
             barrelPercent: { type: 'f', value: self.barrelPercent },
-            floorToImageMatrix: { type: 'm3', value: self.floorToImageMatrix },
+            worldToImageMatrix: { type: 'm4', value: self.worldToImageMatrix },
             viewBounds: { type: 'v4', value: self.viewBounds },
             floorRadius: { type: 'f', value: self.floorRadius },
         },
@@ -333,8 +333,23 @@ function FloorFindUI(containerElement) {
     self._pD = pD;
     self._vp1 = vp1;
     self._vp2 = vp2;
+
+    self._refVert1Floor = self._board.create('point', [w*0.25, h*0.25], { name: 'Floor' });
+    self._refVert2Floor = self._board.create('point', [w*0.75, h*0.25], { name: 'Floor' });
+    self._refVert1 = self._board.create('point', [w*0.25, h*0.75], { name: 'Vertical' });
+    self._refVert2 = self._board.create('point', [w*0.75, h*0.75], { name: 'Vertical' });
+    self.reverenceHeight1 = 0.5;
+    self.reverenceHeight2 = 0.5;
+
+    self._board.create('line', [self._refVert1Floor, self._refVert1], {
+        straightFirst: false, straightLast: false
+    });
+    self._board.create('line', [self._refVert2Floor, self._refVert2], {
+        straightFirst: false, straightLast: false
+    });
+
     self.imageToFloorMatrix = new THREE.Matrix3();
-    self.floorToImageMatrix = new THREE.Matrix3();
+    self.worldToImageMatrix = new THREE.Matrix4();
 
     function setFloorCamera() {
         // There's a new bounding box. Bounding boxes in JSXGraph are arrays
@@ -380,6 +395,8 @@ FloorFindUI.prototype.initialiseFromTexture = function() {
 FloorFindUI.prototype.updateProjectionMatrix = function() {
     var self = this;
 
+    // Firstly compute the image-space to floor plane matrix:
+
     var floorPoints = numeric.dot(
         self.getFloorPlaneTransform(),
         [
@@ -408,25 +425,124 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         { x: floorPoints[0][3], y: floorPoints[1][3] },
     ]);
 
-    self._floorRenderer.floorMatrix.set(
-        H[0], H[1], H[2],
-        H[3], H[4], H[5],
-        H[6], H[7], 1.0
-    );
-    self.imageToFloorMatrix = self._floorRenderer.floorMatrix;
-
-    var A = [
+    var imageToFloor = [
         [H[0], H[1], H[2]],
         [H[3], H[4], H[5]],
-        [H[6], H[7], 1.0],
+        [H[6], H[7], 1.0]
     ];
-    var Ainv = numeric.inv(A);
 
-    self.floorToImageMatrix.set(
-        Ainv[0][0], Ainv[0][1], Ainv[0][2],
-        Ainv[1][0], Ainv[1][1], Ainv[1][2],
-        Ainv[2][0], Ainv[2][1], Ainv[2][2]
+    // Use the image to floor matrix to compute the floor-plane co-ordinates of
+    // the reference verticals.
+    var refVert1Floor = numeric.dot(imageToFloor, [
+        self._refVert1Floor.X(), self._refVert1Floor.Y(), 1
+    ]);
+    refVert1Floor = numeric.div(refVert1Floor, refVert1Floor[2]);
+
+    var refVert2Floor = numeric.dot(imageToFloor, [
+        self._refVert2Floor.X(), self._refVert2Floor.Y(), 1
+    ]);
+    refVert2Floor = numeric.div(refVert2Floor, refVert2Floor[2]);
+
+    // We can now compute a list of image-space and world-space correspondences.
+    var imagePoints = [], worldPoints = [];
+    imagePoints.push([self._pA.X(), self._pA.Y()]);
+    imagePoints.push([self._pB.X(), self._pB.Y()]);
+    imagePoints.push([self._pC.X(), self._pC.Y()]);
+    imagePoints.push([self._pD.X(), self._pD.Y()]);
+    for(var i=0; i<4; ++i) {
+        worldPoints.push([floorPoints[0][i], floorPoints[1][i], 0]);
+    }
+
+    imagePoints.push([self._refVert1Floor.X(), self._refVert1Floor.Y()]);
+    imagePoints.push([self._refVert1.X(), self._refVert1.Y()]);
+    worldPoints.push([refVert1Floor[0], refVert1Floor[1], 0]);
+    worldPoints.push([refVert1Floor[0], refVert1Floor[1], self.reverenceHeight1]);
+
+    imagePoints.push([self._refVert2Floor.X(), self._refVert2Floor.Y()]);
+    imagePoints.push([self._refVert2.X(), self._refVert2.Y()]);
+    worldPoints.push([refVert2Floor[0], refVert2Floor[1], 0]);
+    worldPoints.push([refVert2Floor[0], refVert2Floor[1], self.reverenceHeight1]);
+
+    // We can now form the camera calibration problem as outlined in
+    // http://research.microsoft.com/en-us/um/people/zhang/Papers/Camera%20Calibration%20-%20book%20chapter.pdf
+    // (With sign errors corrected)
+
+    var G = [];
+    for(i=0; i<imagePoints.length; ++i) {
+        var X = worldPoints[i], x = imagePoints[i];
+        G.push([
+            X[0], X[1], X[2], 1, 0, 0, 0, 0, -x[0]*X[0], -x[0]*X[1], -x[0]*X[2], -x[0]
+        ]);
+        G.push([
+            0, 0, 0, 0, X[0], X[1], X[2], 1, -x[1]*X[0], -x[1]*X[1], -x[1]*X[2], -x[1]
+        ]);
+    }
+
+    var GtG = numeric.dot(numeric.transpose(G), G);
+    var eigsol = numeric.eig(GtG);
+    var absLambda = eigsol.lambda.abs().x;
+    var minidx = 0, minval = absLambda[0];
+    for(i=0; i<absLambda.length; ++i) {
+        if(absLambda[i] < minval) {
+            minidx = i; minval = absLambda[i];
+        }
+    }
+
+    // Projection matrix coefficients are eigenvector with minimum eigenvalue:
+    var Pvec = numeric.transpose(eigsol.E.x)[minidx];
+
+    // Normalise s.t. p31^2 + p32^2 + p33^2 = 1 and p34 +ve
+    Pvec = numeric.div(Pvec, Math.sqrt(Pvec[8]*Pvec[8] + Pvec[9]*Pvec[9] + Pvec[10]*Pvec[10]));
+    Pvec = numeric.mul(Pvec, Math.sign(Pvec[11]));
+
+    var P = [
+        [Pvec[0], Pvec[1], Pvec[2], Pvec[3]],
+        [Pvec[4], Pvec[5], Pvec[6], Pvec[7]],
+        [Pvec[8], Pvec[9], Pvec[10], Pvec[11]]
+    ];
+
+    console.log('P:\n' + numeric.prettyPrint(P));
+
+    // Uncomment to test
+    /*
+    var W = [], Ig = [];
+    for(i=0; i<worldPoints.length; ++i) {
+        var X = worldPoints[i], x = imagePoints[i];
+        W.push([
+            X[0], X[1], X[2], 1
+        ]);
+        Ig.push(x);
+    }
+    W = numeric.transpose(W);
+
+    var I = numeric.transpose(numeric.dot(P, W));
+    for(i=0; i<imagePoints.length; i++) {
+        console.log(imagePoints[i], 'vs', numeric.div(I[i], I[i][2]));
+    }
+    */
+
+    // Form subset of matrix P which acts on world co-ordinate == 0
+    var floorToImage = [
+        [P[0][0], P[0][1], P[0][3]],
+        [P[1][0], P[1][1], P[1][3]],
+        [P[2][0], P[2][1], P[2][3]],
+    ];
+    var imageToFloor = numeric.inv(floorToImage);
+
+    self._floorRenderer.imageToFloorMatrix.set(
+        imageToFloor[0][0], imageToFloor[0][1], imageToFloor[0][2],
+        imageToFloor[1][0], imageToFloor[1][1], imageToFloor[1][2],
+        imageToFloor[2][0], imageToFloor[2][1], imageToFloor[2][2]
     );
+
+    self.imageToFloorMatrix = self._floorRenderer.imageToFloorMatrix;
+    self.worldToImageMatrix.set(
+        P[0][0], P[0][1], P[0][2], P[0][3],
+        P[1][0], P[1][1], P[1][2], P[1][3],
+        0, 0, 1, 0,
+        P[2][0], P[2][1], P[2][2], P[2][3]
+    );
+    self._floorRenderer.worldToImageMatrix.copy(self.worldToImageMatrix);
 };
 
 // Create ThreeJS context for rendering floor.
@@ -434,14 +550,19 @@ function FloorRenderer(containerElement, textureUrl) {
     var self = this;
 
     self.containerElement = containerElement;
-    self.scene = new THREE.Scene();
+    self.floorScene = new THREE.Scene();
     self.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 2);
     self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
-    self.floorMatrix = new THREE.Matrix3();
     self.floorOpacity = 0.25;
     self.floorRadius = 15;
     self.barrelPercent = 0.0;
     self.viewBounds = new THREE.Vector4(-0.5, 0.5, 0.5, -0.5);
+
+    // Matrices
+    self.imageToFloorMatrix = new THREE.Matrix3();
+    self.imageToViewportMatrix = new THREE.Matrix4();
+    self.worldToImageMatrix = new THREE.Matrix4();
+    self._worldToViewportMatrix = new THREE.Matrix4();
 
     self.texture = null;
 
@@ -459,14 +580,14 @@ function FloorRenderer(containerElement, textureUrl) {
     });
 
     var img = new THREE.Mesh(geometry, self.imageMaterial);
-    self.scene.add(img);
+    self.floorScene.add(img);
 
     self.floorMaterial = new THREE.ShaderMaterial({
         vertexShader: document.getElementById('floorVertexShader').textContent,
         fragmentShader: document.getElementById('floorFragmentShader').textContent,
         uniforms: {
             viewBounds: { type: 'v4', value: self.viewBounds },
-            floorMatrix: { type: 'm3', value: self.floorMatrix },
+            imageToFloorMatrix: { type: 'm3', value: self.imageToFloorMatrix },
             floorOpacity: { type: 'f', value: self.floorOpacity },
             floorRadius: { type: 'f', value: self.floorRadius },
         },
@@ -474,7 +595,26 @@ function FloorRenderer(containerElement, textureUrl) {
     });
 
     var floor = new THREE.Mesh(geometry, self.floorMaterial);
-    self.scene.add(floor);
+    self.floorScene.add(floor);
+
+    self.axisScene = new THREE.Scene();
+    self.axisCamera = new THREE.Camera();
+
+    //self.axisCamera = new THREE.PerspectiveCamera(90, 1, 1, 10000);
+    //self.axisCamera.position.z = 5;
+
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0),
+        1, 0xff0000, 0.2, 0.1
+    ));
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 0),
+        1, 0x00ff00, 0.2, 0.1
+    ));
+    self.axisScene.add(new THREE.ArrowHelper(
+        new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 0),
+        1, 0x0000ff, 0.2, 0.1
+    ));
 
     self.camera.position.z = 1;
     self.containerElement.appendChild(self.renderer.domElement);
@@ -488,10 +628,26 @@ FloorRenderer.prototype.containerResized = function() {
 }
 
 FloorRenderer.prototype.render = function() {
+    // Re-calculate the image -> viewport matrix from the [left, top, right,
+    // bottom] bounds.
+    var bounds = this.viewBounds;
+    var w = bounds.z - bounds.x, h = bounds.y - bounds.w;
+    var cx = 0.5*(bounds.z + bounds.x), cy = 0.5*(bounds.y + bounds.w);
+    this.imageToViewportMatrix.set(
+        2/w, 0, 0, -2*cx/w,
+        0, 2/h, 0, -2*cy/h,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+    );
+
+    this._worldToViewportMatrix.multiplyMatrices(
+        this.imageToViewportMatrix, this.worldToImageMatrix);
+    this.axisCamera.projectionMatrix.copy(this._worldToViewportMatrix);
+
     var uniforms;
 
     uniforms = this.floorMaterial.uniforms;
-    uniforms.floorMatrix.value = this.floorMatrix;
+    uniforms.imageToFloorMatrix.value = this.imageToFloorMatrix;
     uniforms.floorOpacity.value = this.floorOpacity;
     uniforms.floorRadius.value = this.floorRadius;
 
@@ -504,7 +660,9 @@ FloorRenderer.prototype.render = function() {
         uniforms.textureSize.value.set(w, h);
     }
 
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.autoClearColor = false;
+    this.renderer.render(this.floorScene, this.camera);
+    this.renderer.render(this.axisScene, this.axisCamera);
 }
 
 // Compute 3x3 matrix H which maps image-plane to floor-plane homogenous
