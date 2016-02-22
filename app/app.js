@@ -505,7 +505,6 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
 
     // Uncomment to test
     /*
-
     var W = [], Ig = [];
     for(i=0; i<worldPoints.length; ++i) {
         var X = worldPoints[i], x = imagePoints[i];
@@ -522,7 +521,6 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
     }
     */
 
-
     // Form subset of matrix P which acts on world co-ordinate == 0
     var floorToImage = [
         [P[0][0], P[0][1], P[0][3]],
@@ -536,14 +534,15 @@ FloorFindUI.prototype.updateProjectionMatrix = function() {
         imageToFloor[1][0], imageToFloor[1][1], imageToFloor[1][2],
         imageToFloor[2][0], imageToFloor[2][1], imageToFloor[2][2]
     );
-    self.imageToFloorMatrix = self._floorRenderer.imageToFloorMatrix;
 
+    self.imageToFloorMatrix = self._floorRenderer.imageToFloorMatrix;
     self.worldToImageMatrix.set(
         P[0][0], P[0][1], P[0][2], P[0][3],
         P[1][0], P[1][1], P[1][2], P[1][3],
         0, 0, 1, 0,
         P[2][0], P[2][1], P[2][2], P[2][3]
     );
+    self._floorRenderer.worldToImageMatrix.copy(self.worldToImageMatrix);
 };
 
 // Create ThreeJS context for rendering floor.
@@ -554,11 +553,16 @@ function FloorRenderer(containerElement, textureUrl) {
     self.floorScene = new THREE.Scene();
     self.camera = new THREE.OrthographicCamera(-0.5, 0.5, 0.5, -0.5, 0, 2);
     self.renderer = new THREE.WebGLRenderer({ alpha: true, depth: false });
-    self.imageToFloorMatrix = new THREE.Matrix3();
     self.floorOpacity = 0.25;
     self.floorRadius = 15;
     self.barrelPercent = 0.0;
     self.viewBounds = new THREE.Vector4(-0.5, 0.5, 0.5, -0.5);
+
+    // Matrices
+    self.imageToFloorMatrix = new THREE.Matrix3();
+    self.imageToViewportMatrix = new THREE.Matrix4();
+    self.worldToImageMatrix = new THREE.Matrix4();
+    self._worldToViewportMatrix = new THREE.Matrix4();
 
     self.texture = null;
 
@@ -594,8 +598,10 @@ function FloorRenderer(containerElement, textureUrl) {
     self.floorScene.add(floor);
 
     self.axisScene = new THREE.Scene();
-    self.axisCamera = new THREE.PerspectiveCamera(90, 1, 1, 10000);
-    self.axisCamera.position.z = 5;
+    self.axisCamera = new THREE.Camera();
+
+    //self.axisCamera = new THREE.PerspectiveCamera(90, 1, 1, 10000);
+    //self.axisCamera.position.z = 5;
 
     self.axisScene.add(new THREE.ArrowHelper(
         new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 0),
@@ -622,6 +628,22 @@ FloorRenderer.prototype.containerResized = function() {
 }
 
 FloorRenderer.prototype.render = function() {
+    // Re-calculate the image -> viewport matrix from the [left, top, right,
+    // bottom] bounds.
+    var bounds = this.viewBounds;
+    var w = bounds.z - bounds.x, h = bounds.y - bounds.w;
+    var cx = 0.5*(bounds.z + bounds.x), cy = 0.5*(bounds.y + bounds.w);
+    this.imageToViewportMatrix.set(
+        2/w, 0, 0, -2*cx/w,
+        0, 2/h, 0, -2*cy/h,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+    );
+
+    this._worldToViewportMatrix.multiplyMatrices(
+        this.imageToViewportMatrix, this.worldToImageMatrix);
+    this.axisCamera.projectionMatrix.copy(this._worldToViewportMatrix);
+
     var uniforms;
 
     uniforms = this.floorMaterial.uniforms;
