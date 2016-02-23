@@ -84,7 +84,7 @@ function main() {
     var gui = new dat.GUI();
     gui.add(ffUi, 'floorOpacity', 0.0, 1.0);
     gui.add(ffUi, 'floorRadius', 1, 50);
-    gui.add(ffUi, 'barrelDistortion', -50, 20);
+    gui.add(ffUi, 'barrelDistortion', -0.50, 0.20);
     gui.add(state, 'xScale', 0, 3).onChange(updateFloorTransform);
     gui.add(state, 'yScale', 0, 3).onChange(updateFloorTransform);
     gui.add(state, 'xOffset', -10, 10).onChange(updateFloorTransform);
@@ -385,7 +385,7 @@ FloorFindUI.prototype.toJSON = function() {
         pointCorrespondences: this.pointCorrespondences(),
         projectionMatrix: this._projectionMatrix,
         barrelCorrection: {
-            K1: this.barrelDistortion * 1e-2,
+            K1: this.barrelDistortion,
         },
     });
 };
