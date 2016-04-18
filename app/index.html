@@ -45,7 +45,7 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 
     // scale coord
     float r2 = dot(coord, coord);
-    float k = 1e-2 * barrelPercent;
+    float k = barrelPercent;
 
     // r -> r + k * r^3 
     // d/dr = 1 + 3kr^2
@@ -132,9 +132,11 @@ vec2 undistortImgToDistortImg(vec2 coord) {
 void main() {
     vec2 distortImgCoord = undistortImgToDistortImg(imgCoord);
     vec2 texCoord = distortImgCoord / textureSize;
-    if((texCoord.x >= 0.0) && (texCoord.y >= 0.0)
-            && (texCoord.x < 1.0) && (texCoord.y < 1.0)) {
+    vec2 clipCoord = distortImgCoord / textureSize;
+    if((clipCoord.x >= 0.0) && (clipCoord.y >= 0.0)
+            && (clipCoord.x < 1.0) && (clipCoord.y < 1.0)) {
         gl_FragColor = texture2D(image, texCoord);
+        //gl_FragColor = vec4(floor(imgCoord / 1920.0), 0.0, 1.0);
     } else {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 0.0);
     }

@@ -3,6 +3,7 @@
 // Entry point to application. Called after all functions and variables below
 // have been initialised.
 function main() {
+    //var imgUrl = 'lensfield.png';
     var imgUrl = 'trumpington.png';
 
     Split(['#floor-pane', '#image-pane'], {
@@ -21,6 +22,7 @@ function main() {
     });
 
     texPromise.then(function(texture) {
+        texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.NearestFilter;
         ffUi.texture = texture;
         ffUi.initialiseFromTexture();
@@ -83,15 +85,15 @@ function main() {
     // Create parameter GUI
     var gui = new dat.GUI();
     gui.add(ffUi, 'floorOpacity', 0.0, 1.0);
-    gui.add(ffUi, 'floorRadius', 1, 50);
+    gui.add(ffUi, 'floorRadius', 1, 90);
     gui.add(ffUi, 'barrelDistortion', -0.50, 0.20);
     gui.add(state, 'xScale', 0, 3).onChange(updateFloorTransform);
     gui.add(state, 'yScale', 0, 3).onChange(updateFloorTransform);
-    gui.add(state, 'xOffset', -10, 10).onChange(updateFloorTransform);
-    gui.add(state, 'yOffset', -10, 10).onChange(updateFloorTransform);
+    gui.add(state, 'xOffset', -20, 20).onChange(updateFloorTransform);
+    gui.add(state, 'yOffset', -20, 20).onChange(updateFloorTransform);
     gui.add(state, 'theta', -200, 200).onChange(updateFloorTransform);
-    gui.add(ffUi, 'referenceHeight1', 0, 1).onChange(updateFloorTransform);
-    gui.add(ffUi, 'referenceHeight2', 0, 1).onChange(updateFloorTransform);
+    gui.add(ffUi, 'referenceHeight1', 0, 3).onChange(updateFloorTransform);
+    gui.add(ffUi, 'referenceHeight2', 0, 3).onChange(updateFloorTransform);
     gui.add(actions, 'download');
 
     function render() {
@@ -334,8 +336,8 @@ function FloorFindUI(containerElement) {
 
     self._refVert1Floor = self._board.create('point', [w*0.25, h*0.25], { name: 'Floor' });
     self._refVert2Floor = self._board.create('point', [w*0.75, h*0.25], { name: 'Floor' });
-    self._refVert1 = self._board.create('point', [w*0.25, h*0.75], { name: 'Vertical' });
-    self._refVert2 = self._board.create('point', [w*0.75, h*0.75], { name: 'Vertical' });
+    self._refVert1 = self._board.create('point', [w*0.25, h*0.75], { name: 'Vertical 1' });
+    self._refVert2 = self._board.create('point', [w*0.75, h*0.75], { name: 'Vertical 2' });
     self.referenceHeight1 = 0.4;
     self.referenceHeight2 = 0.4;
 
@@ -485,7 +487,7 @@ FloorFindUI.prototype.pointCorrespondences = function() {
     imagePoints.push([self._refVert2Floor.X(), self._refVert2Floor.Y()]);
     imagePoints.push([self._refVert2.X(), self._refVert2.Y()]);
     worldPoints.push([refVert2Floor[0], refVert2Floor[1], 0]);
-    worldPoints.push([refVert2Floor[0], refVert2Floor[1], self.referenceHeight1]);
+    worldPoints.push([refVert2Floor[0], refVert2Floor[1], self.referenceHeight2]);
 
     return { image: imagePoints, world: worldPoints };
 }
